@@ -1,231 +1,239 @@
-# 🎬 YouTube Playlist Downloader
+# YouTube Playlist Downloader
 
-A modern, feature-rich YouTube playlist downloader with a beautiful web interface. Download entire playlists or individual videos with ease!
+A modern YouTube playlist downloader with a React frontend and Node.js backend. Download videos and playlists in various formats with real-time progress tracking.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D14.0.0-brightgreen.svg)
-![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)
 
-## ✨ Features
+## Features
 
-### Core Functionality
-- 🎵 **Multiple Format Support**: MP4, MKV, WEBM, MP3, M4A, WAV
-- 🎯 **Quality Selection**: 4K, 2K, 1080p, 720p, 480p, 360p, or Best Available
-- 📦 **Bulk Downloads**: Download multiple videos simultaneously (3 concurrent downloads)
-- ⏸️ **Download Management**: Queue system with cancel functionality
-- 📊 **Real-time Progress**: Live progress tracking with animated progress bars
-- 📁 **Custom Paths**: Choose your download location
-- 🗂️ **Auto Organization**: Optional playlist subfolder creation
+- 📺 Download individual videos or entire playlists
+- 🎵 Audio-only downloads (MP3)
+- 🎬 Video downloads (MP4, WebM)
+- 📊 Real-time progress tracking
+- 🎯 Quality selection (Best, 1080p, 720p, 480p)
+- 🚀 Concurrent downloads with queue management
+- 🎨 Beautiful React UI with Tailwind CSS
+- ⚡ Real-time updates via WebSocket
+- 🛡️ Comprehensive error handling
+- 🔄 Cancel downloads in progress
 
-### User Interface
-- 🎨 **Modern Design**: Clean, professional Tailwind CSS interface
-- 📱 **Fully Responsive**: Works perfectly on mobile, tablet, and desktop
-- 🌙 **Smooth Animations**: Polished transitions and loading states
-- ✅ **Status Icons**: Visual feedback for every download state
-- 🔄 **Real-time Updates**: Socket.IO for instant progress updates
-
-### Download States
-- ⏱️ **Queued**: Waiting in download queue
-- ⬇️ **Downloading**: Active download with percentage
-- ✅ **Complete**: Successfully downloaded
-- ⚠️ **Error**: Failed with error message
-- 🚫 **Cancelled**: User cancelled download
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js (v14 or higher)
-- npm or yarn
-- Python 3.x (for yt-dlp)
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/youtube-playlist-downloader.git
-   cd youtube-playlist-downloader
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start the server**
-   ```bash
-   node server.js
-   ```
-
-4. **Open your browser**
-   ```
-   http://localhost:3000
-   ```
-
-## 📖 Usage
-
-### Basic Usage
-
-1. **Paste Playlist URL**
-   - Copy a YouTube playlist URL
-   - Paste it into the input field
-   - Click "Analyze"
-
-2. **Select Videos**
-   - Check individual videos or use "Select All"
-   - Choose format (Video/Audio)
-   - Select quality
-
-3. **Download**
-   - Click "Download Selected" or individual download buttons
-   - Watch real-time progress
-   - Videos download 3 at a time automatically
-
-### Advanced Options
-
-- **Custom Download Path**: Specify where to save files
-- **Create Subfolder**: Organize downloads in playlist-specific folders
-- **Format Selection**: Choose between video formats (MP4, MKV, WEBM) or audio (MP3, M4A, WAV)
-- **Quality Control**: Select specific quality or let it choose the best available
-
-## 🛠️ Technology Stack
-
-### Backend
-- **Node.js**: Server runtime
-- **Express**: Web framework
-- **Socket.IO**: Real-time communication
-- **yt-dlp**: YouTube download engine
-- **ffmpeg**: Media processing
-
-### Frontend
-- **Vanilla JavaScript**: No framework overhead
-- **Tailwind CSS**: Modern utility-first CSS
-- **Socket.IO Client**: Real-time updates
-- **Heroicons**: Beautiful SVG icons
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 youtube-playlist-downloader/
-├── public/
-│   ├── index.html          # Main HTML file
-│   ├── script.js           # Frontend JavaScript
-│   └── style.css           # Tailwind CSS styles
-├── downloads/              # Default download directory
-├── server.js               # Express server
-├── scraper.js              # Playlist scraping logic
-├── downloader.js           # Download handling
-├── downloadManager.js      # Queue management
-├── package.json            # Dependencies
-└── README.md              # This file
+├── client/              # React frontend
+│   ├── src/
+│   │   ├── components/
+│   │   ├── App.jsx
+│   │   └── main.jsx
+│   └── package.json
+│
+├── server/              # Node.js backend
+│   ├── index.js
+│   ├── scraper.js
+│   ├── downloader.js
+│   ├── downloadManager.js
+│   ├── downloads/
+│   ├── yt-dlp
+│   └── package.json
+│
+├── README.md
+├── LICENSE
+└── .gitignore
 ```
 
-## ⚙️ Configuration
+## Quick Start
 
-### Download Manager
-Edit `downloadManager.js` to change concurrent downloads:
-```javascript
-constructor(maxConcurrency = 3) {  // Change this number
-    this.maxConcurrency = maxConcurrency;
+### 1. Install Dependencies
+
+```bash
+# Install server dependencies
+cd server
+npm install
+
+# Install client dependencies
+cd ../client
+npm install
+```
+
+### 2. Setup yt-dlp
+
+```bash
+cd server
+
+# Linux/Mac
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
+chmod +x yt-dlp
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile yt-dlp.exe
+```
+
+### 3. Run the Application
+
+**Terminal 1 - Start Backend:**
+```bash
+cd server
+npm start
+```
+
+**Terminal 2 - Start Frontend:**
+```bash
+cd client
+npm run dev
+```
+
+**Open Browser:**
+```
+http://localhost:5173
+```
+
+## Fixing YouTube Bot Detection
+
+If you see errors like "Sign in to confirm you're not a bot", try these solutions:
+
+### Solution 1: Update yt-dlp (Recommended)
+
+```bash
+cd server
+
+# Linux/Mac
+curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
+chmod +x yt-dlp
+
+# Windows
+Invoke-WebRequest -Uri https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe -OutFile yt-dlp.exe
+```
+
+### Solution 2: Use Cookies (Advanced)
+
+1. Install a browser extension to export cookies (e.g., "Get cookies.txt LOCALLY")
+2. Export YouTube cookies to `server/cookies.txt`
+3. Restart the server
+
+The application will automatically use cookies if the file exists.
+
+### Solution 3: Use Android Client (Already Configured)
+
+The application is already configured to use YouTube's Android client API, which helps bypass bot detection. Make sure you're using the latest version of yt-dlp.
+
+## Tech Stack
+
+**Frontend:**
+- React 18
+- Vite
+- Tailwind CSS
+- Socket.io Client
+
+**Backend:**
+- Node.js
+- Express
+- Socket.io
+- yt-dlp
+- ffmpeg-static
+
+## Configuration
+
+### Client Environment (.env)
+```env
+VITE_API_URL=http://localhost:3000
+```
+
+### Server Environment
+```env
+PORT=3000
+CLIENT_URL=http://localhost:5173
+NODE_ENV=development
+```
+
+## API Endpoints
+
+### POST /api/download
+Download videos or playlists
+
+**Request:**
+```json
+{
+  "url": "https://youtube.com/watch?v=...",
+  "format": "mp4",
+  "quality": "best"
 }
 ```
 
-### Server Port
-Edit `server.js` to change the port:
-```javascript
-const PORT = process.env.PORT || 3000;  // Change port here
+**Response:**
+```json
+{
+  "videos": [...],
+  "message": "Downloads queued"
+}
 ```
 
-## 🎯 Features in Detail
+### POST /api/cancel/:id
+Cancel a download in progress
 
-### Concurrent Downloads
-- Downloads 3 videos simultaneously
-- Automatic queue management
-- FIFO (First In, First Out) system
-- No manual intervention needed
+## WebSocket Events
 
-### Progress Tracking
-- Real-time percentage updates
-- Animated progress bars
-- Color-coded status messages
-- Download speed indicators
+- `downloadProgress` - Progress updates
+- `downloadComplete` - Download finished
+- `downloadError` - Download failed
 
-### Error Handling
-- Network error recovery
-- Invalid URL detection
-- File system error handling
-- User-friendly error messages
+## Production Build
 
-## 📱 Responsive Design
-
-### Mobile (< 640px)
-- Stacked layout
-- Full-width buttons
-- Checkbox overlay on thumbnails
-- Optimized touch targets
-
-### Tablet (640px - 768px)
-- Transitional layout
-- Side-by-side controls
-- Improved spacing
-
-### Desktop (> 768px)
-- Multi-column layout
-- Separate checkbox column
-- Hover effects
-- Optimal spacing
-
-## 🔧 Troubleshooting
-
-### yt-dlp not found
 ```bash
-# Install yt-dlp
-pip install yt-dlp
-# Or download binary and place in project root
+# Build frontend
+cd client
+npm run build
+
+# The built files will be in client/dist/
 ```
 
-### Port already in use
+## Troubleshooting
+
+### Port Already in Use
 ```bash
-# Change port in server.js or use environment variable
-PORT=8080 node server.js
+# Kill process on port 3000
+lsof -ti:3000 | xargs kill -9
+
+# Kill process on port 5173
+lsof -ti:5173 | xargs kill -9
 ```
 
-### Downloads not starting
-- Check yt-dlp is installed
-- Verify ffmpeg is available
-- Check download path permissions
-- Ensure valid YouTube URL
+### yt-dlp Not Found
+```bash
+cd server
+chmod +x yt-dlp
+./yt-dlp --version
+```
 
-## 🤝 Contributing
+### Downloads Not Working
+- Ensure yt-dlp is executable and in the server directory
+- Check server logs for errors
+- Verify the URL is a valid YouTube link
+- Update yt-dlp to the latest version
+- Try using cookies if bot detection occurs
+
+### Bot Detection Errors
+- Update yt-dlp to the latest version
+- Export YouTube cookies and place in `server/cookies.txt`
+- Wait a few minutes and try again
+- Try a different video/playlist
+
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+## Acknowledgments
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube downloader
+- [React](https://react.dev/) - Frontend framework
+- [Tailwind CSS](https://tailwindcss.com/) - Styling
+- [Socket.io](https://socket.io/) - Real-time communication
+
+## Disclaimer
 
 This tool is for personal use only. Please respect YouTube's Terms of Service and copyright laws. Only download content you have the right to download.
-
-## 🙏 Acknowledgments
-
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube download engine
-- [Tailwind CSS](https://tailwindcss.com/) - CSS framework
-- [Heroicons](https://heroicons.com/) - Icon library
-- [Socket.IO](https://socket.io/) - Real-time communication
-
-## 📧 Contact
-
-Your Name - [@yourtwitter](https://twitter.com/yourtwitter)
-
-Project Link: [https://github.com/yourusername/youtube-playlist-downloader](https://github.com/yourusername/youtube-playlist-downloader)
-
----
-
-Made with ❤️ by [Your Name]
