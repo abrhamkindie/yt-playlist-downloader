@@ -69,6 +69,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     console.log(`Starting download for: ${title} to ${filePath} [Format: ${format}, Quality: ${quality}]`);
 
     let args = [];
+    const cookiesPath = path.join(__dirname, 'cookies.txt');
+    const hasCookies = fs.existsSync(cookiesPath);
 
     if (isAudio) {
         // Audio download logic
@@ -81,8 +83,11 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--newline',
             '--no-mtime',
             '--js-runtimes', 'node',
-            url
         ];
+        if (hasCookies) {
+            args.push('--cookies', cookiesPath);
+        }
+        args.push(url);
     } else {
         // Video download logic
         // Construct format selector based on quality and container
@@ -111,10 +116,14 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--no-mtime',
             '-N', '4', // Concurrent fragments
             '--resize-buffer',
-            '--http-chunk-size', '10M',
             '--js-runtimes', 'node',
-            url
         ];
+
+        if (hasCookies) {
+            args.push('--cookies', cookiesPath);
+        }
+
+        args.push(url);
     }
 
     let downloadProcess;

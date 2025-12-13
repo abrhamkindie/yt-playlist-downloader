@@ -18,8 +18,14 @@ async function scrapePlaylist(url) {
             '-J',
             '--no-warnings',
             '--js-runtimes', 'node',
-            url
         ];
+
+        const cookiesPath = path.join(__dirname, 'cookies.txt');
+        if (fs.existsSync(cookiesPath)) {
+            args.push('--cookies', cookiesPath);
+        }
+
+        args.push(url);
 
         console.log(`Fetching playlist metadata with yt-dlp: ${url}`);
         
