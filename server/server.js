@@ -150,8 +150,13 @@ app.post('/api/cancel/:id', (req, res) => {
     }
 });
 
-// Fallback route for React Router (must be last)
-app.get('/*', (req, res) => {
+// Serve index.html for all non-API routes (React Router support)
+app.use((req, res, next) => {
+    // Skip API routes
+    if (req.path.startsWith('/api')) {
+        return next();
+    }
+    
     const indexPath = path.join(__dirname, '../client/dist/index.html');
     if (fs.existsSync(indexPath)) {
         res.sendFile(indexPath);
