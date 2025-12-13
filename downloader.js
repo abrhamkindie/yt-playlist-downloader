@@ -10,22 +10,42 @@ if (!fs.existsSync(downloadsDir)) {
 }
 
 function downloadVideo(url, title, customPath, format, quality, options, io, onComplete, onError) {
-    const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    
-    // Use custom path if provided and exists, otherwise default
-    let outputDir = downloadsDir;
-    if (customPath && fs.existsSync(customPath)) {
-        outputDir = customPath;
-    }
-
-    // Create subfolder if requested
-    if (options && options.createSubfolder && options.playlistTitle) {
-        const safePlaylistTitle = options.playlistTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        outputDir = path.join(outputDir, safePlaylistTitle);
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
+    try {
+        // Validate inputs
+        if (!url || typeof url !== 'string') {
+            throw new Error('Invalid URL');
         }
-    }
+        
+        if (!title || typeof title !== 'string') {
+            throw new Error('Invalid title');
+        }
+
+        const safeTitle = title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        
+        // Use custom path if provided and exists, otherwise default
+        let outputDir = downloadsDir;
+        if (customPath) {
+            if (fs.existsSync(customPath)) {
+                outputDir = customPath;
+            } else {
+                console.warn(`Custom path does not exist: ${customPath}, using default`);
+            }
+        }
+
+        // Create subfolder if requested
+        if (options && options.createSubfolder && options.playlistTitle) {
+            const safePlaylistTitle = options.playlistTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            outputDir = path.join(outputDir, safePlaylistTitle);
+            try {
+                if (!fs.existsSync(outputDir)) {
+                    fs.mkdirSync(outputDir, { recursive: true });
+                }
+            } catch (err) {
+                console.error(`Failed to create subfolder: ${err.message}`);
+                if (onError) onError(`Failed to create download directory: ${err.message}`);
+                return null;
+            }
+        }
     
     // Determine extension based on format
     const audioFormats = ['mp3', 'm4a', 'wav'];
@@ -95,28 +115,46 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
         ];
     }
 
-    const process = spawn(ytDlpPath, args, { detached: true });
-    console.log(`[Downloader] Spawned yt-dlp with PID: ${process.pid}`);
+    let downloadProcess;
+    try {
+        downloadProcess = spawn(ytDlpPath, args, { detached: true });
+        console.log(`[Downloader] Spawned yt-dlp with PID: ${downloadProcess.pid}`);
+    } catch (err) {
+        console.error(`Failed to spawn yt-dlp: ${err.message}`);
+        if (io) {
+            io.emit('download-error', { url, error: 'Failed to start download' });
+        }
+        if (onError) onError('Failed to start download');
+        return null;
+    }
 
-    process.stdout.on('data', (data) => {
+    let lastProgress = 0;
+    let stderrOutput = '';
+
+    downloadProcess.stdout.on('data', (data) => {
         const output = data.toString();
-        // console.log(output); // Verbose logging
 
         // Parse progress
         const match = output.match(/(\d+(\.\d+)?)%/);
         if (match && match[1]) {
             const percent = parseFloat(match[1]);
-            if (io) {
-                io.emit('download-progress', { url, percent });
+            // Only emit if progress changed significantly (reduce socket spam)
+            if (Math.abs(percent - lastProgress) >= 1 || percent === 100) {
+                lastProgress = percent;
+                if (io) {
+                    io.emit('download-progress', { url, percent: Math.min(percent, 100) });
+                }
             }
         }
     });
 
-    process.stderr.on('data', (data) => {
-        console.error(`stderr: ${data}`);
+    downloadProcess.stderr.on('data', (data) => {
+        const errorText = data.toString();
+        stderrOutput += errorText;
+        console.error(`[yt-dlp stderr]: ${errorText}`);
     });
 
-    process.on('close', (code) => {
+    downloadProcess.on('close', (code) => {
         if (code === 0) {
             console.log(`Download complete: ${title}`);
             if (io) {
@@ -127,23 +165,53 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             // Code null means killed (cancelled)
             if (code !== null) {
                 console.error(`Download failed with code ${code}`);
-                if (io) {
-                    io.emit('download-error', { url, error: `Process exited with code ${code}` });
+                
+                // Parse error message
+                let errorMessage = 'Download failed';
+                if (stderrOutput.includes('HTTP Error 403') || stderrOutput.includes('Forbidden')) {
+                    errorMessage = 'Access denied. Video may be restricted.';
+                } else if (stderrOutput.includes('HTTP Error 404')) {
+                    errorMessage = 'Video not found.';
+                } else if (stderrOutput.includes('Private video')) {
+                    errorMessage = 'Video is private.';
+                } else if (stderrOutput.includes('This video is unavailable')) {
+                    errorMessage = 'Video is unavailable.';
+                } else if (stderrOutput.includes('network') || stderrOutput.includes('timeout')) {
+                    errorMessage = 'Network error. Please try again.';
+                } else if (code === 1) {
+                    errorMessage = 'Download failed. Please try again.';
                 }
-                if (onError) onError(`Process exited with code ${code}`);
+                
+                if (io) {
+                    io.emit('download-error', { url, error: errorMessage });
+                }
+                if (onError) onError(errorMessage);
             }
         }
     });
 
-    process.on('error', (err) => {
-        console.error(`Failed to start yt-dlp: ${err}`);
+    downloadProcess.on('error', (err) => {
+        console.error(`Failed to start yt-dlp: ${err.message}`);
+        const errorMessage = err.code === 'ENOENT' 
+            ? 'yt-dlp not found. Please install yt-dlp.'
+            : 'Failed to start download';
+        
         if (io) {
-            io.emit('download-error', { url, error: err.message });
+            io.emit('download-error', { url, error: errorMessage });
         }
-        if (onError) onError(err.message);
+        if (onError) onError(errorMessage);
     });
     
-    return process;
+    return downloadProcess;
+    
+    } catch (error) {
+        console.error(`Download error: ${error.message}`);
+        if (io) {
+            io.emit('download-error', { url, error: error.message });
+        }
+        if (onError) onError(error.message);
+        return null;
+    }
 }
 
 module.exports = { downloadVideo };

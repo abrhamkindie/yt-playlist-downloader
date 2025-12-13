@@ -20,6 +20,13 @@ class DownloadManager extends EventEmitter {
         }
 
         const task = this.queue.shift();
+        
+        if (!task || !task.id || !task.start) {
+            console.error('[DownloadManager] Invalid task in queue');
+            this.processQueue(); // Try next task
+            return;
+        }
+
         this.activeDownloads.set(task.id, { process: null, info: task });
         
         this.emit('start', task);
@@ -29,14 +36,18 @@ class DownloadManager extends EventEmitter {
             // task.start() should return the child process
             const childProcess = task.start();
             
+            if (!childProcess) {
+                console.error('[DownloadManager] Task start() returned null');
+                this.handleError(task.id, new Error('Failed to start download'));
+                return;
+            }
+            
             if (this.activeDownloads.has(task.id)) {
                 this.activeDownloads.get(task.id).process = childProcess;
             }
-
-            // Wait for completion (handled by the task's internal promise or event listener)
-            // We assume task.start() triggers the actual download logic
             
         } catch (error) {
+            console.error('[DownloadManager] Error starting task:', error);
             this.handleError(task.id, error);
         }
     }
@@ -51,9 +62,14 @@ class DownloadManager extends EventEmitter {
     }
 
     handleError(id, error) {
+        console.error(`[DownloadManager] Error for download ${id}:`, error);
+        
         if (this.activeDownloads.has(id)) {
             this.activeDownloads.delete(id);
-            this.emit('error', { id, error });
+            this.emit('error', { 
+                id, 
+                error: error instanceof Error ? error.message : String(error)
+            });
             this.emit('queue-update', this.getQueueStatus());
             this.processQueue();
         }

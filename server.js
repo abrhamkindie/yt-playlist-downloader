@@ -13,8 +13,24 @@ const io = socketIo(server);
 
 const PORT = process.env.PORT || 3000;
 
+// Error handling middleware
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Request logging
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+    next();
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+    console.error('[Server Error]', err);
+    res.status(500).json({ 
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
 
 // Listen to download manager events and broadcast to clients
 downloadManager.on('cancelled', ({ id, url }) => {
@@ -31,56 +47,95 @@ io.on('connection', (socket) => {
 });
 
 app.post('/api/analyze', async (req, res) => {
-    let { url } = req.body;
-    if (!url) {
-        return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // Handle relative URLs (e.g. if copied from some contexts)
-    if (url.startsWith('/')) {
-        url = `https://www.youtube.com${url}`;
-    }
-
     try {
+        let { url } = req.body;
+        
+        // Validation
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ error: 'Valid URL is required' });
+        }
+
+        url = url.trim();
+        
+        // Handle relative URLs
+        if (url.startsWith('/')) {
+            url = `https://www.youtube.com${url}`;
+        }
+
+        // Basic URL validation
+        if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+            return res.status(400).json({ error: 'Please provide a valid YouTube URL' });
+        }
+
         console.log(`Analyzing playlist: ${url}`);
         const videos = await scrapePlaylist(url);
+        
+        if (!videos || videos.length === 0) {
+            return res.status(404).json({ error: 'No videos found in playlist' });
+        }
+
         res.json({ videos });
     } catch (error) {
         console.error('Error analyzing playlist:', error);
-        res.status(500).json({ error: 'Failed to analyze playlist' });
+        const errorMessage = error.message.includes('yt-dlp') 
+            ? 'Failed to fetch playlist. Please check the URL and try again.'
+            : 'Failed to analyze playlist';
+        res.status(500).json({ error: errorMessage });
     }
 });
 
 app.post('/api/download', async (req, res) => {
-    const { url, title, downloadPath, format, quality, createSubfolder, playlistTitle } = req.body;
-    if (!url) {
-        return res.status(400).json({ error: 'URL is required' });
-    }
-
-    // Create a unique ID for this download session
-    const downloadId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
-    const task = {
-        id: downloadId,
-        url,
-        title,
-        start: () => {
-            return downloadVideo(
-                url, 
-                title, 
-                downloadPath, 
-                format, 
-                quality, 
-                { createSubfolder, playlistTitle }, 
-                io,
-                () => downloadManager.handleComplete(downloadId),
-                (err) => downloadManager.handleError(downloadId, err)
-            );
+    try {
+        const { url, title, downloadPath, format, quality, createSubfolder, playlistTitle } = req.body;
+        
+        // Validation
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ error: 'Valid URL is required' });
         }
-    };
+        
+        if (!title || typeof title !== 'string') {
+            return res.status(400).json({ error: 'Valid title is required' });
+        }
 
-    downloadManager.addToQueue(task);
-    res.json({ message: 'Download queued', downloadId });
+        // Validate format
+        const validFormats = ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'wav'];
+        if (format && !validFormats.includes(format)) {
+            return res.status(400).json({ error: 'Invalid format' });
+        }
+
+        // Validate download path if provided
+        if (downloadPath && !fs.existsSync(downloadPath)) {
+            return res.status(400).json({ error: 'Download path does not exist' });
+        }
+
+        // Create a unique ID for this download session
+        const downloadId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        
+        const task = {
+            id: downloadId,
+            url,
+            title,
+            start: () => {
+                return downloadVideo(
+                    url, 
+                    title, 
+                    downloadPath, 
+                    format || 'mp4', 
+                    quality || 'best', 
+                    { createSubfolder, playlistTitle }, 
+                    io,
+                    () => downloadManager.handleComplete(downloadId),
+                    (err) => downloadManager.handleError(downloadId, err)
+                );
+            }
+        };
+
+        downloadManager.addToQueue(task);
+        res.json({ message: 'Download queued', downloadId });
+    } catch (error) {
+        console.error('Error queueing download:', error);
+        res.status(500).json({ error: 'Failed to queue download' });
+    }
 });
 
 app.post('/api/cancel', (req, res) => {
@@ -240,6 +295,46 @@ app.get('/api/pick-directory', (req, res) => {
     });
 });
 
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, closing server gracefully');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, closing server gracefully');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+// Uncaught exception handler
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    // Don't exit in production, log and continue
+    if (process.env.NODE_ENV !== 'production') {
+        process.exit(1);
+    }
+});
+
+// Unhandled rejection handler
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+}).on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${PORT} is already in use`);
+        process.exit(1);
+    } else {
+        console.error('Server error:', error);
+        process.exit(1);
+    }
 });
