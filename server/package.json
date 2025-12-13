@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "electron": "electron ."
+    "electron": "electron .",
+    "postinstall": "chmod +x yt-dlp"
   },
   "keywords": [
     "youtube",

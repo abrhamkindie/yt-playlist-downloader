@@ -179,7 +179,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
                 } else if (stderrOutput.includes('network') || stderrOutput.includes('timeout')) {
                     errorMessage = 'Network error. Please try again.';
                 } else if (code === 1) {
-                    errorMessage = 'Download failed. Please try again.';
+                    // Include stderr in the error message for debugging
+                    errorMessage = `Download failed: ${stderrOutput.slice(0, 200)}`;
                 }
                 
                 if (io) {
