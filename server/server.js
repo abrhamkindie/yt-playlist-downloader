@@ -3,17 +3,28 @@ const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const cors = require('cors');
 const { scrapePlaylist } = require('./scraper');
 const { downloadVideo } = require('./downloader');
 const downloadManager = require('./downloadManager');
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+
+// Allow requests from the frontend URL (or all if not specified)
+const CLIENT_URL = process.env.CLIENT_URL || '*';
+
+const io = socketIo(server, {
+    cors: {
+        origin: CLIENT_URL,
+        methods: ["GET", "POST"]
+    }
+});
 
 const PORT = process.env.PORT || 3000;
 
 // Error handling middleware
+app.use(cors({ origin: CLIENT_URL }));
 app.use(express.static(path.join(__dirname, '../client/dist')));
 app.use(express.json({ limit: '10mb' }));
 

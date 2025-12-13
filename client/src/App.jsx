@@ -19,8 +19,11 @@ function App() {
   const [videoStates, setVideoStates] = useState({});
   const [activeDownloads, setActiveDownloads] = useState(new Map()); // url -> downloadId
 
+  // Use environment variable for API URL, fallback to relative path (proxy) for dev
+  const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
   useEffect(() => {
-    const newSocket = io();
+    const newSocket = io(API_BASE_URL);
     setSocket(newSocket);
 
     newSocket.on('connect', () => console.log('Connected to server'));
@@ -101,7 +104,7 @@ function App() {
     setSelectedVideos(new Set());
 
     try {
-        const response = await fetch('/api/analyze', {
+        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: playlistUrl })
@@ -130,7 +133,7 @@ function App() {
       }));
 
       try {
-          const response = await fetch('/api/download', {
+          const response = await fetch(`${API_BASE_URL}/api/download`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -163,7 +166,7 @@ function App() {
       if (!downloadId) return;
 
       try {
-          await fetch('/api/cancel', {
+          await fetch(`${API_BASE_URL}/api/cancel`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ downloadId })
@@ -175,7 +178,7 @@ function App() {
 
   const handlePickDirectory = async () => {
       try {
-          const response = await fetch('/api/pick-directory');
+          const response = await fetch(`${API_BASE_URL}/api/pick-directory`);
           const data = await response.json();
           if (data.path) {
               setDownloadPath(data.path);
@@ -187,7 +190,7 @@ function App() {
 
   const handleOpenFolder = async (filePath) => {
       try {
-          await fetch('/api/open-folder', {
+          await fetch(`${API_BASE_URL}/api/open-folder`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ downloadPath, filePath })
