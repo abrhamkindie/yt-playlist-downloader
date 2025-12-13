@@ -69,6 +69,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     console.log(`Starting download for: ${title} to ${filePath} [Format: ${format}, Quality: ${quality}]`);
 
     let args = [];
+    const cookiesPath = path.join(__dirname, 'cookies.txt');
+    const hasCookies = fs.existsSync(cookiesPath);
 
     if (isAudio) {
         // Audio download logic
@@ -116,6 +118,12 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             url
         ];
+    }
+
+    // Add cookies if available
+    if (hasCookies) {
+        args.push('--cookies', cookiesPath);
+        console.log('[Downloader] Using cookies for authentication');
     }
 
     console.log(`[Downloader] Executing yt-dlp with args: ${args.join(' ')}`);

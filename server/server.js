@@ -235,6 +235,17 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
+// Decode cookies from environment variable if provided
+if (process.env.YOUTUBE_COOKIES_B64) {
+    try {
+        const cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString();
+        fs.writeFileSync(path.join(__dirname, 'cookies.txt'), cookiesContent);
+        console.log('YouTube cookies loaded from environment variable');
+    } catch (err) {
+        console.error('Failed to decode cookies:', err.message);
+    }
+}
+
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
