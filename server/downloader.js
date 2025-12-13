@@ -80,6 +80,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '-o', filePath,
             '--newline',
             '--no-mtime',
+            '--js-runtimes', 'node',
             url
         ];
     } else {
@@ -111,6 +112,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '-N', '4', // Concurrent fragments
             '--resize-buffer',
             '--http-chunk-size', '10M',
+            '--js-runtimes', 'node',
             url
         ];
     }
