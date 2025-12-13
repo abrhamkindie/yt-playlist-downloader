@@ -126,6 +126,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
         args.push(url);
     }
 
+    console.log(`[Downloader] Executing yt-dlp with args: ${args.join(' ')}`);
+
     let downloadProcess;
     try {
         downloadProcess = spawn(ytDlpPath, args, { detached: true });
