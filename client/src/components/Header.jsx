@@ -5,11 +5,7 @@ export default function Header() {
     <header className="bg-white shadow-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center text-white font-bold text-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                </div>
+                <img src="/logo.svg" alt="Logo" className="w-8 h-8 rounded-lg" />
                 <h1 className="text-xl font-bold tracking-tight text-gray-900">Playlist<span className="text-primary-600">Downloader</span></h1>
             </div>
             <div className="text-sm text-gray-500 hidden sm:block">Premium YouTube Tools</div>
