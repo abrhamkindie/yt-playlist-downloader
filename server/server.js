@@ -163,7 +163,12 @@ app.post('/api/download', async (req, res) => {
             downloadManager.addToQueue(task);
         });
 
-        res.json({ videos, message: 'Downloads queued' });
+        const response = { videos, message: 'Downloads queued' };
+        if (videos.length === 1) {
+            response.downloadId = videos[0].id;
+        }
+
+        res.json(response);
     } catch (error) {
         console.error('Error processing download:', error);
         const errorMessage = error.message.includes('yt-dlp') 
