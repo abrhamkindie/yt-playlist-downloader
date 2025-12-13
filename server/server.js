@@ -12,8 +12,9 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: process.env.CLIENT_URL || "*",
-        methods: ["GET", "POST"]
+        origin: process.env.CLIENT_URL || ["https://streampull.vercel.app", "http://localhost:5173"],
+        methods: ["GET", "POST"],
+        credentials: true
     }
 });
 
@@ -21,7 +22,7 @@ const PORT = process.env.PORT || 3000;
 
 // CORS for React dev server
 app.use(cors({
-    origin: process.env.CLIENT_URL || "*",
+    origin: process.env.CLIENT_URL || ["https://streampull.vercel.app", "http://localhost:5173"],
     credentials: true
 }));
 
