@@ -65,6 +65,27 @@ io.on('connection', (socket) => {
     });
 });
 
+app.post('/api/analyze', async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url) {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+
+        console.log(`Analyzing playlist: ${url}`);
+        const videos = await scrapePlaylist(url);
+        
+        if (!videos || videos.length === 0) {
+            return res.status(404).json({ error: 'No videos found' });
+        }
+
+        res.json({ videos, message: 'Playlist analyzed successfully' });
+    } catch (error) {
+        console.error('Error analyzing playlist:', error);
+        res.status(500).json({ error: 'Failed to analyze playlist' });
+    }
+});
+
 app.post('/api/download', async (req, res) => {
     try {
         let { url, format, quality } = req.body;
