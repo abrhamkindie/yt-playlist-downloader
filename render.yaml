@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: youtube-playlist-downloader
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: |
+      npm install
+      curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp
+      chmod a+rx yt-dlp
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: RENDER
+        value: true
+    healthCheckPath: /
+    disk:
+      name: downloads
+      mountPath: /opt/render/project/src/downloads
+      sizeGB: 1

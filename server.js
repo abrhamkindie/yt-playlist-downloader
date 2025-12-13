@@ -23,6 +23,20 @@ app.use((req, res, next) => {
     next();
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    const ytDlpPath = path.join(__dirname, 'yt-dlp');
+    const ytDlpExists = fs.existsSync(ytDlpPath);
+    
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        ytdlp: ytDlpExists ? 'installed' : 'missing',
+        platform: process.platform
+    });
+});
+
 // Global error handler
 app.use((err, req, res, next) => {
     console.error('[Server Error]', err);
@@ -154,10 +168,16 @@ app.post('/api/open-folder', (req, res) => {
     const { downloadPath, filePath } = req.body;
     console.log('[Open Folder] Request received:', req.body);
     
-    let targetPath = downloadPath || (filePath ? path.dirname(filePath) : path.join(__dirname, 'downloads'));
+    // Check if running in cloud environment
+    const isCloudEnvironment = process.env.RENDER || process.env.RAILWAY || process.env.HEROKU;
     
-    // If filePath is provided, we try to open the folder. 
-    // On some OSs we could highlight the file, but for now we'll just open the dir.
+    if (isCloudEnvironment) {
+        return res.status(400).json({ 
+            error: 'Open Folder is not available in cloud deployment. Downloads are stored on the server.' 
+        });
+    }
+    
+    let targetPath = downloadPath || (filePath ? path.dirname(filePath) : path.join(__dirname, 'downloads'));
     
     if (!targetPath) {
         targetPath = path.join(__dirname, 'downloads');
