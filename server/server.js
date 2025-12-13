@@ -1,30 +1,31 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
+const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const cors = require('cors');
 const { scrapePlaylist } = require('./scraper');
 const { downloadVideo } = require('./downloader');
 const downloadManager = require('./downloadManager');
 
 const app = express();
 const server = http.createServer(app);
-
-// Allow requests from the frontend URL (or all if not specified)
-const CLIENT_URL = process.env.CLIENT_URL || '*';
-
 const io = socketIo(server, {
     cors: {
-        origin: CLIENT_URL,
+        origin: process.env.CLIENT_URL || "*",
         methods: ["GET", "POST"]
     }
 });
 
 const PORT = process.env.PORT || 3000;
 
-// Error handling middleware
-app.use(cors({ origin: CLIENT_URL }));
+// CORS for React dev server
+app.use(cors({
+    origin: process.env.CLIENT_URL || "*",
+    credentials: true
+}));
+
+// Serve static files from client/dist in production
 app.use(express.static(path.join(__dirname, '../client/dist')));
 app.use(express.json({ limit: '10mb' }));
 
@@ -49,6 +50,12 @@ downloadManager.on('cancelled', ({ id, url }) => {
     io.emit('cancelled', { id, url });
 });
 
+// Handle download manager errors
+downloadManager.on('error', ({ id, error }) => {
+    console.log(`[Server] Broadcasting error event for ${id}: ${error}`);
+    io.emit('downloadError', { id, error });
+});
+
 io.on('connection', (socket) => {
     console.log('New client connected');
 
@@ -57,9 +64,9 @@ io.on('connection', (socket) => {
     });
 });
 
-app.post('/api/analyze', async (req, res) => {
+app.post('/api/download', async (req, res) => {
     try {
-        let { url } = req.body;
+        let { url, format, quality } = req.body;
         
         // Validation
         if (!url || typeof url !== 'string') {
@@ -78,84 +85,64 @@ app.post('/api/analyze', async (req, res) => {
             return res.status(400).json({ error: 'Please provide a valid YouTube URL' });
         }
 
-        console.log(`Analyzing playlist: ${url}`);
-        const videos = await scrapePlaylist(url);
-        
-        if (!videos || videos.length === 0) {
-            return res.status(404).json({ error: 'No videos found in playlist' });
-        }
-
-        res.json({ videos });
-    } catch (error) {
-        console.error('Error analyzing playlist:', error);
-        const errorMessage = error.message.includes('yt-dlp') 
-            ? 'Failed to fetch playlist. Please check the URL and try again.'
-            : 'Failed to analyze playlist';
-        res.status(500).json({ error: errorMessage });
-    }
-});
-
-app.post('/api/download', async (req, res) => {
-    try {
-        const { url, title, downloadPath, format, quality, createSubfolder, playlistTitle } = req.body;
-        
-        // Validation
-        if (!url || typeof url !== 'string') {
-            return res.status(400).json({ error: 'Valid URL is required' });
-        }
-        
-        if (!title || typeof title !== 'string') {
-            return res.status(400).json({ error: 'Valid title is required' });
-        }
-
         // Validate format
-        const validFormats = ['mp4', 'mkv', 'webm', 'mp3', 'm4a', 'wav'];
+        const validFormats = ['mp4', 'webm', 'mp3'];
         if (format && !validFormats.includes(format)) {
             return res.status(400).json({ error: 'Invalid format' });
         }
 
-        // Validate download path if provided
-        if (downloadPath && !fs.existsSync(downloadPath)) {
-            console.warn(`[Download] Custom path does not exist: ${downloadPath}. Falling back to default.`);
-            // Do not error, let it fallback to default in downloader.js
-            // We'll pass null as downloadPath to downloader.js effectively
+        console.log(`Analyzing and downloading: ${url}`);
+        const videos = await scrapePlaylist(url);
+        
+        if (!videos || videos.length === 0) {
+            return res.status(404).json({ error: 'No videos found' });
         }
 
-        // Create a unique ID for this download session
-        const downloadId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-        
-        const task = {
-            id: downloadId,
-            url,
-            title,
-            start: () => {
-                return downloadVideo(
-                    url, 
-                    title, 
-                    downloadPath, 
-                    format || 'mp4', 
-                    quality || 'best', 
-                    { createSubfolder, playlistTitle }, 
-                    io,
-                    () => downloadManager.handleComplete(downloadId),
-                    (err) => downloadManager.handleError(downloadId, err)
-                );
-            }
-        };
+        // Queue all videos for download
+        const downloadPath = path.join(__dirname, 'downloads');
+        if (!fs.existsSync(downloadPath)) {
+            fs.mkdirSync(downloadPath, { recursive: true });
+        }
 
-        downloadManager.addToQueue(task);
-        res.json({ message: 'Download queued', downloadId });
+        videos.forEach(video => {
+            const task = {
+                id: video.id,
+                url: video.url,
+                title: video.title,
+                start: () => {
+                    return downloadVideo(
+                        video.url, 
+                        video.title, 
+                        downloadPath, 
+                        format || 'mp4', 
+                        quality || 'best', 
+                        {}, 
+                        io,
+                        () => downloadManager.handleComplete(video.id),
+                        (err) => downloadManager.handleError(video.id, err),
+                        video.id
+                    );
+                }
+            };
+
+            downloadManager.addToQueue(task);
+        });
+
+        res.json({ videos, message: 'Downloads queued' });
     } catch (error) {
-        console.error('Error queueing download:', error);
-        res.status(500).json({ error: 'Failed to queue download' });
+        console.error('Error processing download:', error);
+        const errorMessage = error.message.includes('yt-dlp') 
+            ? 'Failed to fetch video(s). Please check the URL and try again.'
+            : 'Failed to process download';
+        res.status(500).json({ error: errorMessage });
     }
 });
 
-app.post('/api/cancel', (req, res) => {
-    const { downloadId } = req.body;
-    if (!downloadId) return res.status(400).json({ error: 'Download ID required' });
+app.post('/api/cancel/:id', (req, res) => {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ error: 'Download ID required' });
 
-    const success = downloadManager.cancelDownload(downloadId);
+    const success = downloadManager.cancelDownload(id);
     if (success) {
         res.json({ message: 'Download cancelled' });
     } else {
@@ -163,195 +150,9 @@ app.post('/api/cancel', (req, res) => {
     }
 });
 
-app.post('/api/open-folder', (req, res) => {
-    const { downloadPath, filePath } = req.body;
-    console.log('[Open Folder] Request received:', req.body);
-    
-    let targetPath = downloadPath || (filePath ? path.dirname(filePath) : path.join(__dirname, 'downloads'));
-    
-    // If filePath is provided, we try to open the folder. 
-    // On some OSs we could highlight the file, but for now we'll just open the dir.
-    
-    if (!targetPath) {
-        targetPath = path.join(__dirname, 'downloads');
-    }
-
-    console.log('[Open Folder] Target Path:', targetPath);
-
-    // Ensure the path exists
-    if (!fs.existsSync(targetPath)) {
-         console.error('[Open Folder] Path does not exist:', targetPath);
-         return res.status(400).json({ error: 'Path does not exist' });
-    }
-
-    let command;
-    let args = [];
-
-    if (filePath && fs.existsSync(filePath)) {
-        // "Reveal" logic
-        switch (process.platform) {
-            case 'darwin':
-                command = 'open';
-                args = ['-R', filePath];
-                break;
-            case 'win32':
-                command = 'explorer';
-                args = [`/select,${filePath}`];
-                break;
-            default: // linux
-                // Try using DBus (standard for modern desktops like GNOME, KDE, XFCE)
-                // This calls org.freedesktop.FileManager1.ShowItems
-                try {
-                    console.log('[Open Folder] Attempting DBus selection...');
-                    const { execSync } = require('child_process');
-                    // Format path as file URI
-                    const fileUri = `file://${filePath}`;
-                    const dbusCommand = `dbus-send --session --print-reply --dest=org.freedesktop.FileManager1 /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"${fileUri}" string:""`;
-                    
-                    execSync(dbusCommand);
-                    console.log('[Open Folder] DBus command successful');
-                    return res.json({ message: 'Folder opened via DBus' });
-                } catch (dbusErr) {
-                    console.log('[Open Folder] DBus failed, falling back to binary detection:', dbusErr.message);
-                }
-
-                // Fallback to binary detection
-                if (fs.existsSync('/usr/bin/nautilus')) {
-                    command = 'nautilus';
-                    args = ['--select', filePath];
-                } else if (fs.existsSync('/usr/bin/dolphin')) {
-                    command = 'dolphin';
-                    args = ['--select', filePath];
-                } else if (fs.existsSync('/usr/bin/nemo')) {
-                    command = 'nemo';
-                    args = [filePath]; 
-                } else if (fs.existsSync('/usr/bin/thunar')) {
-                    command = 'thunar';
-                    args = [filePath];
-                } else {
-                    command = 'xdg-open';
-                    args = [path.dirname(filePath)];
-                }
-                break;
-        }
-    } else {
-        // Open directory logic
-        switch (process.platform) {
-            case 'darwin':
-                command = 'open';
-                args = [targetPath];
-                break;
-            case 'win32':
-                command = 'explorer';
-                args = [targetPath];
-                break;
-            default: // linux
-                command = 'xdg-open';
-                args = [targetPath];
-                break;
-        }
-    }
-
-    console.log(`[Open Folder] Executing: ${command} ${args.join(' ')}`);
-
-    const child = require('child_process').spawn(command, args, { detached: true, stdio: 'ignore' });
-    
-    child.on('error', (err) => {
-        console.error('[Open Folder] Spawn error:', err);
-    });
-
-    child.unref();
-
-    res.json({ message: 'Folder opened' });
-});
-
-// Endpoint to serve downloaded files
-app.get('/api/download-file', (req, res) => {
-    const { filePath } = req.query;
-    
-    if (!filePath) {
-        return res.status(400).json({ error: 'File path is required' });
-    }
-
-    // Basic security check: ensure file exists
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'File not found' });
-    }
-
-    res.download(filePath, (err) => {
-        if (err) {
-            console.error('[Download File] Error sending file:', err);
-            if (!res.headersSent) {
-                res.status(500).json({ error: 'Failed to download file' });
-            }
-        }
-    });
-});
-
-app.get('/api/pick-directory', (req, res) => {
-    let command;
-    let args = [];
-
-    switch (process.platform) {
-        case 'linux':
-            command = 'zenity';
-            args = ['--file-selection', '--directory'];
-            break;
-        case 'win32':
-            command = 'powershell';
-            args = [
-                '-NoProfile', 
-                '-Command', 
-                "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.ShowDialog() | Out-Null; $f.SelectedPath"
-            ];
-            break;
-        case 'darwin':
-            command = 'osascript';
-            args = ['-e', 'POSIX path of (choose folder)'];
-            break;
-        default:
-            return res.status(500).json({ error: 'Platform not supported' });
-    }
-
-    console.log(`[Pick Directory] Executing: ${command} ${args.join(' ')}`);
-
-    const child = require('child_process').spawn(command, args);
-    let stdoutData = '';
-    let stderrData = '';
-
-    let responseSent = false;
-
-    child.stdout.on('data', (data) => {
-        stdoutData += data.toString();
-    });
-
-    child.stderr.on('data', (data) => {
-        stderrData += data.toString();
-    });
-
-    child.on('close', (code) => {
-        if (responseSent) return;
-        responseSent = true;
-
-        if (code !== 0 && stdoutData.trim() === '') {
-            // User likely cancelled or error
-            console.log('[Pick Directory] Cancelled or failed');
-            return res.json({ path: null });
-        }
-        
-        const selectedPath = stdoutData.trim();
-        console.log(`[Pick Directory] Selected: ${selectedPath}`);
-        res.json({ path: selectedPath });
-    });
-    
-    child.on('error', (err) => {
-        if (responseSent) return;
-        responseSent = true;
-        
-        console.error('[Pick Directory] Spawn error:', err);
-        // If spawn fails (e.g. zenity not found), return null path instead of 500 to avoid client error
-        res.json({ path: null });
-    });
+// Fallback route for React Router
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
 });
 
 // Graceful shutdown
@@ -374,7 +175,6 @@ process.on('SIGINT', () => {
 // Uncaught exception handler
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
-    // Don't exit in production, log and continue
     if (process.env.NODE_ENV !== 'production') {
         process.exit(1);
     }
@@ -388,6 +188,7 @@ process.on('unhandledRejection', (reason, promise) => {
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`Client URL: ${process.env.CLIENT_URL || '*'}`);
 }).on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
         console.error(`Port ${PORT} is already in use`);
