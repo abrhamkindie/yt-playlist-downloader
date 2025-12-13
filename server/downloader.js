@@ -117,6 +117,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '-N', '4', // Concurrent fragments
             '--resize-buffer',
             '--js-runtimes', 'node',
+            '--extractor-args', 'youtube:player_client=android',
         ];
 
         if (hasCookies) {

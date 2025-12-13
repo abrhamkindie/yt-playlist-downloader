@@ -18,6 +18,7 @@ async function scrapePlaylist(url) {
             '-J',
             '--no-warnings',
             '--js-runtimes', 'node',
+            '--extractor-args', 'youtube:player_client=android',
         ];
 
         const cookiesPath = path.join(__dirname, 'cookies.txt');
