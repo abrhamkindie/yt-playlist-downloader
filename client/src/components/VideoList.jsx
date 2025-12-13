@@ -12,7 +12,8 @@ export default function VideoList({
     setFormat,
     quality,
     setQuality,
-    onDownloadSelected
+    onDownloadSelected,
+    dirHandle
 }) {
     const handleSelectAll = (e) => {
         if (e.target.checked) {
@@ -30,6 +31,33 @@ export default function VideoList({
             newSelected.delete(id);
         }
         setSelectedVideos(newSelected);
+    };
+
+    const saveToDirectory = async (video, filePath) => {
+        if (!dirHandle) return;
+
+        try {
+            // Fetch the file from the server
+            const response = await fetch(`${import.meta.env.VITE_API_URL || ''}/api/download-file?filePath=${encodeURIComponent(filePath)}`);
+            if (!response.ok) throw new Error('Failed to fetch file');
+            
+            const blob = await response.blob();
+            
+            // Create file handle in the selected directory
+            // Use video title as filename, sanitize it
+            const filename = `${video.title.replace(/[^a-z0-9]/gi, '_')}.${format}`;
+            const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+            
+            // Write to file
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            
+            alert(`Saved ${filename} to selected folder!`);
+        } catch (err) {
+            console.error('Save to directory failed:', err);
+            alert('Failed to save file to directory. Please try standard download.');
+        }
     };
 
     const isAllSelected = videos.length > 0 && selectedVideos.size === videos.length;
@@ -171,13 +199,26 @@ export default function VideoList({
                                         
                                         <div className="flex flex-wrap gap-2">
                                             {isComplete ? (
-                                                <button 
-                                                    onClick={() => onOpenFolder(state.filePath)}
-                                                    className="flex-1 sm:flex-none bg-green-50 text-green-700 hover:bg-green-100 text-sm font-medium py-2 px-4 rounded-lg border border-green-200 transition-colors inline-flex items-center justify-center gap-2"
-                                                >
-                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z"/></svg>
-                                                    Open Folder
-                                                </button>
+                                                dirHandle ? (
+                                                    <button 
+                                                        onClick={() => saveToDirectory(video, state.filePath)}
+                                                        className="flex-1 sm:flex-none bg-green-50 text-green-700 hover:bg-green-100 text-sm font-medium py-2 px-4 rounded-lg border border-green-200 transition-colors inline-flex items-center justify-center gap-2"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                                        Save to Device
+                                                    </button>
+                                                ) : (
+                                                    <a 
+                                                        href={`${import.meta.env.VITE_API_URL || ''}/api/download-file?filePath=${encodeURIComponent(state.filePath)}`}
+                                                        download
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="flex-1 sm:flex-none bg-green-50 text-green-700 hover:bg-green-100 text-sm font-medium py-2 px-4 rounded-lg border border-green-200 transition-colors inline-flex items-center justify-center gap-2"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                                        Save to Device
+                                                    </a>
+                                                )
                                             ) : (
                                                 <button 
                                                     onClick={() => onDownload(video)}

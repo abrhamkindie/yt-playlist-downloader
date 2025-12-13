@@ -265,6 +265,29 @@ app.post('/api/open-folder', (req, res) => {
     res.json({ message: 'Folder opened' });
 });
 
+// Endpoint to serve downloaded files
+app.get('/api/download-file', (req, res) => {
+    const { filePath } = req.query;
+    
+    if (!filePath) {
+        return res.status(400).json({ error: 'File path is required' });
+    }
+
+    // Basic security check: ensure file exists
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found' });
+    }
+
+    res.download(filePath, (err) => {
+        if (err) {
+            console.error('[Download File] Error sending file:', err);
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Failed to download file' });
+            }
+        }
+    });
+});
+
 app.get('/api/pick-directory', (req, res) => {
     let command;
     let args = [];

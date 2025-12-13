@@ -18,6 +18,7 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [videoStates, setVideoStates] = useState({});
   const [activeDownloads, setActiveDownloads] = useState(new Map()); // url -> downloadId
+  const [dirHandle, setDirHandle] = useState(null);
 
   // Use environment variable for API URL, fallback to relative path (proxy) for dev
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -139,7 +140,7 @@ function App() {
               body: JSON.stringify({
                   url: video.url,
                   title: video.title,
-                  downloadPath,
+                  downloadPath: null, // Always use default server path for cloud downloads
                   format,
                   quality,
                   createSubfolder,
@@ -177,11 +178,33 @@ function App() {
   };
 
   const handlePickDirectory = async () => {
+      // Try to use File System Access API first (Chrome/Edge/Opera)
+      if ('showDirectoryPicker' in window) {
+          try {
+              const handle = await window.showDirectoryPicker();
+              setDirHandle(handle);
+              setDownloadPath(handle.name); // Just show the folder name
+              return;
+          } catch (err) {
+              if (err.name === 'AbortError') return; // User cancelled
+              console.error('Directory picker error:', err);
+              // Fallback to server picker if client picker fails (unlikely but safe)
+          }
+      }
+
+      // Fallback for other browsers or if API fails
       try {
           const response = await fetch(`${API_BASE_URL}/api/pick-directory`);
           const data = await response.json();
           if (data.path) {
               setDownloadPath(data.path);
+          } else {
+              setStatus({ 
+                  type: 'loading', 
+                  message: 'Directory selection unavailable', 
+                  subMessage: 'Your browser doesn\'t support direct folder selection. Downloads will be saved to your default Downloads folder.' 
+              });
+              setTimeout(() => setStatus(null), 5000);
           }
       } catch (error) {
           console.error('Failed to pick directory', error);
@@ -260,6 +283,7 @@ function App() {
                 quality={quality}
                 setQuality={setQuality}
                 onDownloadSelected={handleDownloadSelected}
+                dirHandle={dirHandle}
             />
         </main>
 
