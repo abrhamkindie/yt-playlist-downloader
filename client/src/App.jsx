@@ -152,6 +152,7 @@ function App() {
               body: JSON.stringify({
                   url: video.url,
                   title: video.title,
+                  id: video.id, // Pass ID to skip re-analysis
                   downloadPath: null, // Always use default server path for cloud downloads
                   format,
                   quality,

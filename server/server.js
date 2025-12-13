@@ -88,7 +88,7 @@ app.post('/api/analyze', async (req, res) => {
 
 app.post('/api/download', async (req, res) => {
     try {
-        let { url, format, quality } = req.body;
+        let { url, format, quality, title, id } = req.body;
         
         // Validation
         if (!url || typeof url !== 'string') {
@@ -113,8 +113,21 @@ app.post('/api/download', async (req, res) => {
             return res.status(400).json({ error: 'Invalid format' });
         }
 
-        console.log(`Analyzing and downloading: ${url}`);
-        const videos = await scrapePlaylist(url);
+        let videos = [];
+        
+        // Optimization: If we already have the video metadata, skip scraping
+        if (title && id) {
+            console.log(`Using provided metadata for: ${title}`);
+            videos = [{
+                id,
+                url,
+                title,
+                thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+            }];
+        } else {
+            console.log(`Analyzing and downloading: ${url}`);
+            videos = await scrapePlaylist(url);
+        }
         
         if (!videos || videos.length === 0) {
             return res.status(404).json({ error: 'No videos found' });
