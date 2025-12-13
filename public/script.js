@@ -8,7 +8,6 @@ const statusMessage = document.getElementById('statusMessage');
 
 socket.on('connect', () => {
     console.log('Connected to server');
-    checkCloudEnvironment();
 });
 
 socket.on('disconnect', () => {
@@ -19,34 +18,6 @@ socket.on('connect_error', (error) => {
     console.error('Connection error:', error);
     statusMessage.textContent = 'Connection error. Please refresh the page.';
 });
-
-// Check if running in cloud environment
-async function checkCloudEnvironment() {
-    const hostname = window.location.hostname;
-    const isCloud = hostname.includes('render.com') || hostname.includes('railway.app') || hostname.includes('herokuapp.com');
-    
-    if (isCloud) {
-        // Disable open folder button
-        if (openFolderBtn) {
-            openFolderBtn.disabled = true;
-            openFolderBtn.title = 'Not available in cloud deployment';
-            openFolderBtn.style.opacity = '0.5';
-        }
-        
-        // Disable custom path input
-        if (downloadPathInput) {
-            downloadPathInput.disabled = true;
-            downloadPathInput.placeholder = 'Downloads stored on server';
-            downloadPathInput.style.opacity = '0.5';
-        }
-        
-        // Show warning
-        const warning = document.createElement('div');
-        warning.className = 'bg-yellow-50 border-l-4 border-yellow-500 text-yellow-800 px-4 py-3 rounded-lg text-sm mb-4';
-        warning.innerHTML = '<strong>Cloud Deployment:</strong> Downloads are stored on the server. "Open Folder" is not available. For full functionality, please run locally.';
-        statusMessage.parentNode.insertBefore(warning, statusMessage);
-    }
-}
 
 const formatSelect = document.getElementById('formatSelect');
 const qualitySelect = document.getElementById('qualitySelect');
