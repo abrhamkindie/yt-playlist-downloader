@@ -127,7 +127,12 @@ function App() {
             setStatus({ type: 'success', message: 'Playlist loaded successfully!', subMessage: `Found ${data.videos.length} videos • Saving to ${pathMsg}` });
         }
     } catch (error) {
-        setStatus({ type: 'error', message: 'Connection Error: Failed to connect to server.' });
+        console.error('Analysis failed:', error);
+        setStatus({ 
+            type: 'error', 
+            message: 'Connection Error: Failed to connect to server.',
+            subMessage: `Target: ${API_BASE_URL || 'relative path'} | Error: ${error.message}`
+        });
     } finally {
         setIsAnalyzing(false);
     }
