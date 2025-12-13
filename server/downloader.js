@@ -69,8 +69,6 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     console.log(`Starting download for: ${title} to ${filePath} [Format: ${format}, Quality: ${quality}]`);
 
     let args = [];
-    const cookiesPath = path.join(__dirname, 'cookies.txt');
-    const hasCookies = fs.existsSync(cookiesPath);
 
     if (isAudio) {
         // Audio download logic
@@ -82,7 +80,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '-o', filePath,
             '--newline',
             '--no-mtime',
-            '--extractor-args', 'youtube:player_client=android',
+            '--extractor-args', 'youtube:player_client=android,web',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             url
         ];
     } else {
@@ -113,7 +112,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--no-mtime',
             '-N', '4',
             '--resize-buffer',
-            '--extractor-args', 'youtube:player_client=android',
+            '--extractor-args', 'youtube:player_client=android,web',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             url
         ];
     }

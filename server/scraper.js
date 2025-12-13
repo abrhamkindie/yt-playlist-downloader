@@ -17,16 +17,10 @@ async function scrapePlaylist(url) {
             '--flat-playlist',
             '-J',
             '--no-warnings',
-            '--js-runtimes', 'node',
-            '--extractor-args', 'youtube:player_client=android',
+            '--extractor-args', 'youtube:player_client=android,web',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            url
         ];
-
-        const cookiesPath = path.join(__dirname, 'cookies.txt');
-        if (fs.existsSync(cookiesPath)) {
-            args.push('--cookies', cookiesPath);
-        }
-
-        args.push(url);
 
         console.log(`Fetching playlist metadata with yt-dlp: ${url}`);
         
