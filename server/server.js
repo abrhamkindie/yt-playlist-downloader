@@ -150,9 +150,14 @@ app.post('/api/cancel/:id', (req, res) => {
     }
 });
 
-// Fallback route for React Router
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+// Fallback route for React Router (must be last)
+app.get('/*', (req, res) => {
+    const indexPath = path.join(__dirname, '../client/dist/index.html');
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send('Application not built. Run: cd client && npm run build');
+    }
 });
 
 // Graceful shutdown

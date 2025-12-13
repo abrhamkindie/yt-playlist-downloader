@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: youtube-downloader
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: cd server && npm install && cd ../client && npm install && npm run build && cd .. && pip install yt-dlp
+    startCommand: cd server && node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CLIENT_URL
+        sync: false
