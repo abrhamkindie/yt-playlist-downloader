@@ -58,7 +58,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     if (fs.existsSync(filePath)) {
         console.log(`File already exists: ${filePath}`);
         if (io) {
-            io.emit('download-complete', { id: videoId, url, filePath });
+            io.emit('downloadComplete', { id: videoId, url, filePath });
         }
         if (onComplete) onComplete();
         return null; // No process started
@@ -155,7 +155,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             if (Math.abs(percent - lastProgress) >= 1 || percent === 100) {
                 lastProgress = percent;
                 if (io) {
-                    io.emit('download-progress', { id: videoId, url, percent: Math.min(percent, 100), status: 'downloading' });
+                    io.emit('downloadProgress', { id: videoId, url, progress: Math.min(percent, 100), status: 'downloading' });
                 }
             }
         }
@@ -171,7 +171,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
         if (code === 0) {
             console.log(`Download complete: ${title}`);
             if (io) {
-                io.emit('download-complete', { id: videoId, url, filePath });
+                io.emit('downloadComplete', { id: videoId, url, filePath });
             }
             if (onComplete) onComplete();
         } else {
@@ -198,7 +198,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
                 }
                 
                 if (io) {
-                    io.emit('download-error', { id: videoId, url, error: errorMessage });
+                    io.emit('downloadError', { id: videoId, url, error: errorMessage });
                 }
                 if (onError) onError(errorMessage);
             }
@@ -212,7 +212,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             : 'Failed to start download';
         
         if (io) {
-            io.emit('download-error', { id: videoId, url, error: errorMessage });
+            io.emit('downloadError', { id: videoId, url, error: errorMessage });
         }
         if (onError) onError(errorMessage);
     });
@@ -222,7 +222,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     } catch (error) {
         console.error(`Download error: ${error.message}`);
         if (io) {
-            io.emit('download-error', { id: videoId, url, error: error.message });
+            io.emit('downloadError', { id: videoId, url, error: error.message });
         }
         if (onError) onError(error.message);
         return null;

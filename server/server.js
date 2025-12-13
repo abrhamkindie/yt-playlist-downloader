@@ -54,8 +54,7 @@ downloadManager.on('cancelled', ({ id, url }) => {
 // Handle download manager errors
 downloadManager.on('error', ({ id, error }) => {
     console.log(`[Server] Broadcasting error event for ${id}: ${error}`);
-    // Find the video URL from active downloads to match frontend expectations
-    io.emit('download-error', { id, error });
+    io.emit('downloadError', { id, error });
 });
 
 io.on('connection', (socket) => {
