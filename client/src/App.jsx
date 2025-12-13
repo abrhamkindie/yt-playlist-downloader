@@ -156,7 +156,7 @@ function App() {
       } catch (error) {
           setVideoStates(prev => ({
               ...prev,
-              [video.id]: { status: 'error', error: 'Request failed' }
+              [video.id]: { status: 'error', error: error.message || 'Request failed' }
           }));
       }
   };

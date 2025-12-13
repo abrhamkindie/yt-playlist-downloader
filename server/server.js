@@ -116,7 +116,9 @@ app.post('/api/download', async (req, res) => {
 
         // Validate download path if provided
         if (downloadPath && !fs.existsSync(downloadPath)) {
-            return res.status(400).json({ error: 'Download path does not exist' });
+            console.warn(`[Download] Custom path does not exist: ${downloadPath}. Falling back to default.`);
+            // Do not error, let it fallback to default in downloader.js
+            // We'll pass null as downloadPath to downloader.js effectively
         }
 
         // Create a unique ID for this download session
