@@ -52,6 +52,30 @@ Once deployed, your application will be available at:
 https://your-service-name.onrender.com
 ```
 
+## Vercel Deployment (Frontend)
+
+### Step 1: Deploy to Vercel
+
+1. Push your code to GitHub.
+2. Go to [Vercel Dashboard](https://vercel.com/dashboard).
+3. Click "Add New..." -> "Project".
+4. Import your repository.
+5. Vercel should automatically detect the Vite settings.
+   - Root Directory: `client` (Important!)
+   - Build Command: `npm run build`
+   - Output Directory: `dist`
+
+### Step 2: Configure Environment Variables
+
+**CRITICAL STEP**: You must tell the frontend where your backend is running.
+
+1. In your Vercel Project Settings, go to **Environment Variables**.
+2. Add a new variable:
+   - **Key**: `VITE_API_URL`
+   - **Value**: Your Render Backend URL (e.g., `https://your-app.onrender.com`) without a trailing slash.
+3. Click **Save**.
+4. **Redeploy** your application for the changes to take effect (Go to Deployments -> Redeploy).
+
 ## Troubleshooting
 
 ### Build Fails

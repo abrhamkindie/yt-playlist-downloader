@@ -24,6 +24,13 @@ function App() {
   const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
   useEffect(() => {
+    console.log('🔌 API Base URL:', API_BASE_URL || '(relative/proxy)');
+    if (!API_BASE_URL && import.meta.env.PROD) {
+        console.warn('⚠️ VITE_API_URL is missing! The app may try to connect to itself instead of the backend.');
+    }
+  }, [API_BASE_URL]);
+
+  useEffect(() => {
     const newSocket = io(API_BASE_URL);
     setSocket(newSocket);
 
