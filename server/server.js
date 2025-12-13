@@ -14,7 +14,7 @@ const io = socketIo(server);
 const PORT = process.env.PORT || 3000;
 
 // Error handling middleware
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, '../client/dist')));
 app.use(express.json({ limit: '10mb' }));
 
 // Request logging
@@ -186,8 +186,23 @@ app.post('/api/open-folder', (req, res) => {
                 args = [`/select,${filePath}`];
                 break;
             default: // linux
-                // Try to detect common file managers that support selection
-                // This is a heuristic.
+                // Try using DBus (standard for modern desktops like GNOME, KDE, XFCE)
+                // This calls org.freedesktop.FileManager1.ShowItems
+                try {
+                    console.log('[Open Folder] Attempting DBus selection...');
+                    const { execSync } = require('child_process');
+                    // Format path as file URI
+                    const fileUri = `file://${filePath}`;
+                    const dbusCommand = `dbus-send --session --print-reply --dest=org.freedesktop.FileManager1 /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"${fileUri}" string:""`;
+                    
+                    execSync(dbusCommand);
+                    console.log('[Open Folder] DBus command successful');
+                    return res.json({ message: 'Folder opened via DBus' });
+                } catch (dbusErr) {
+                    console.log('[Open Folder] DBus failed, falling back to binary detection:', dbusErr.message);
+                }
+
+                // Fallback to binary detection
                 if (fs.existsSync('/usr/bin/nautilus')) {
                     command = 'nautilus';
                     args = ['--select', filePath];
@@ -196,12 +211,11 @@ app.post('/api/open-folder', (req, res) => {
                     args = ['--select', filePath];
                 } else if (fs.existsSync('/usr/bin/nemo')) {
                     command = 'nemo';
-                    args = [filePath]; // Nemo usually highlights if passed a file, or needs --select? Nemo usually opens folder if passed file.
-                    // Let's stick to nautilus/dolphin for explicit select, else fallback to xdg-open parent dir
-                    command = 'xdg-open';
-                    args = [path.dirname(filePath)];
+                    args = [filePath]; 
+                } else if (fs.existsSync('/usr/bin/thunar')) {
+                    command = 'thunar';
+                    args = [filePath];
                 } else {
-                    // Fallback
                     command = 'xdg-open';
                     args = [path.dirname(filePath)];
                 }
