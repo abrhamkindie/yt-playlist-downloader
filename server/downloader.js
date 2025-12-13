@@ -118,6 +118,11 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
         ];
     }
 
+    // Add cookies if available
+    if (hasCookies) {
+        args.push('--cookies', cookiesPath);
+    }
+
     console.log(`[Downloader] Executing yt-dlp with args: ${args.join(' ')}`);
 
     let downloadProcess;
