@@ -296,6 +296,8 @@ app.get('/api/pick-directory', (req, res) => {
     let stdoutData = '';
     let stderrData = '';
 
+    let responseSent = false;
+
     child.stdout.on('data', (data) => {
         stdoutData += data.toString();
     });
@@ -305,6 +307,9 @@ app.get('/api/pick-directory', (req, res) => {
     });
 
     child.on('close', (code) => {
+        if (responseSent) return;
+        responseSent = true;
+
         if (code !== 0 && stdoutData.trim() === '') {
             // User likely cancelled or error
             console.log('[Pick Directory] Cancelled or failed');
@@ -317,8 +322,12 @@ app.get('/api/pick-directory', (req, res) => {
     });
     
     child.on('error', (err) => {
+        if (responseSent) return;
+        responseSent = true;
+        
         console.error('[Pick Directory] Spawn error:', err);
-        res.status(500).json({ error: 'Failed to spawn picker' });
+        // If spawn fails (e.g. zenity not found), return null path instead of 500 to avoid client error
+        res.json({ path: null });
     });
 });
 

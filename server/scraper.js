@@ -17,6 +17,7 @@ async function scrapePlaylist(url) {
             '--flat-playlist',
             '-J',
             '--no-warnings',
+            '--js-runtimes', 'node',
             url
         ];
 
