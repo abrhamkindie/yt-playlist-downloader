@@ -11,16 +11,34 @@ async function scrapePlaylist(url) {
             return reject(new Error('yt-dlp not found. Please install yt-dlp.'));
         }
         
+        // Detect if URL is a playlist
+        const isPlaylist = url.includes('list=') || url.includes('/playlist');
+        
         // --flat-playlist: Get video info without downloading
         // -J: Dump JSON output
+        // --yes-playlist: Always extract playlist even if URL also points to a video
         const args = [
             '--flat-playlist',
             '-J',
             '--no-warnings',
-            '--extractor-args', 'youtube:player_client=android,web',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            url
         ];
+        
+        // Add --yes-playlist flag BEFORE other args if it's a playlist URL
+        // This ensures that when a URL has both video and playlist IDs, we get the full playlist
+        if (isPlaylist) {
+            args.push('--yes-playlist');
+            console.log('[Scraper] Detected playlist URL, using --yes-playlist flag');
+        } else {
+            // Explicitly set --no-playlist for single videos to be clear
+            args.push('--no-playlist');
+            console.log('[Scraper] Detected single video URL, using --no-playlist flag');
+        }
+        
+        args.push('--extractor-args', 'youtube:player_client=android,web');
+        args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        args.push(url);
+        
+        console.log(`[Scraper] Full command: yt-dlp ${args.join(' ')}`);
 
         console.log(`Fetching playlist metadata with yt-dlp: ${url}`);
         
@@ -79,6 +97,7 @@ async function scrapePlaylist(url) {
                 if (!data.entries) {
                     // It might be a single video if not a playlist
                     if (data.id && data.title) {
+                        console.log('[Scraper] Single video detected, returning 1 video');
                          return resolve([{
                             title: data.title || 'Untitled',
                             url: data.webpage_url || data.url || url,
@@ -86,6 +105,7 @@ async function scrapePlaylist(url) {
                             id: data.id
                         }]);
                     }
+                    console.log('[Scraper] No entries found in response');
                     return resolve([]);
                 }
 
@@ -106,9 +126,11 @@ async function scrapePlaylist(url) {
                     });
 
                 if (videos.length === 0) {
+                    console.log('[Scraper] No valid videos found in playlist entries');
                     return reject(new Error('No videos found in playlist'));
                 }
 
+                console.log(`[Scraper] Successfully extracted ${videos.length} videos from playlist`);
                 resolve(videos);
             } catch (err) {
                 console.error('Failed to parse yt-dlp output:', err);
