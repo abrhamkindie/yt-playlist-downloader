@@ -125,6 +125,23 @@ class DownloadManager extends EventEmitter {
         return false;
     }
 
+    stopAll() {
+        console.log('[DownloadManager] Stopping all downloads...');
+        
+        // Cancel all items in queue first
+        while (this.queue.length > 0) {
+            const task = this.queue.shift();
+            this.emit('cancelled', { id: task.id, url: task.url });
+        }
+        
+        // Cancel all active
+        for (const id of this.activeDownloads.keys()) {
+            this.cancelDownload(id);
+        }
+        
+        this.emit('queue-update', this.getQueueStatus());
+    }
+
     getQueueStatus() {
         return {
             active: Array.from(this.activeDownloads.values()).map(d => d.info),

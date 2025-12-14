@@ -1,10 +1,11 @@
 {
   "name": "youtube-downloader-server",
   "version": "2.0.0",
-  "main": "server.js",
+  "main": "electron-main.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "app": "electron .",
     "postinstall": "chmod +x yt-dlp || true"
   },
   "dependencies": {

@@ -54,7 +54,7 @@ downloadManager.on('cancelled', ({ id, url }) => {
 // Handle download manager errors
 downloadManager.on('error', ({ id, error }) => {
     console.log(`[Server] Broadcasting error event for ${id}: ${error}`);
-    io.emit('downloadError', { id, error });
+    io.emit('download-error', { id, error });
 });
 
 io.on('connection', (socket) => {
@@ -86,9 +86,9 @@ app.post('/api/analyze', async (req, res) => {
     }
 });
 
-app.post('/api/download', async (req, res) => {
+    app.post('/api/download', async (req, res) => {
     try {
-        let { url, format, quality, title, id } = req.body;
+        let { url, format, quality, title, id, downloadPath, createSubfolder, playlistTitle } = req.body;
         
         // Validation
         if (!url || typeof url !== 'string') {
@@ -134,9 +134,23 @@ app.post('/api/download', async (req, res) => {
         }
 
         // Queue all videos for download
-        const downloadPath = path.join(__dirname, 'downloads');
-        if (!fs.existsSync(downloadPath)) {
-            fs.mkdirSync(downloadPath, { recursive: true });
+        // Use provided downloadPath or default
+        let finalDownloadPath = downloadPath || path.join(__dirname, 'downloads');
+        
+        // Handle subfolder creation
+        if (createSubfolder && playlistTitle) {
+            // Sanitize playlist title to be safe for directory name
+            const sanitizedTitle = playlistTitle.replace(/[<>:"/\\|?*]+/g, '_').trim();
+            finalDownloadPath = path.join(finalDownloadPath, sanitizedTitle);
+        }
+        
+        if (!fs.existsSync(finalDownloadPath)) {
+            try {
+                fs.mkdirSync(finalDownloadPath, { recursive: true });
+            } catch (err) {
+                console.error('Failed to create download directory:', err);
+                return res.status(500).json({ error: 'Failed to create download directory' });
+            }
         }
 
         videos.forEach(video => {
@@ -148,7 +162,7 @@ app.post('/api/download', async (req, res) => {
                     return downloadVideo(
                         video.url, 
                         video.title, 
-                        downloadPath, 
+                        finalDownloadPath, 
                         format || 'mp4', 
                         quality || 'best', 
                         {}, 
@@ -190,6 +204,142 @@ app.post('/api/cancel/:id', (req, res) => {
     }
 });
 
+app.post('/api/cancel-all', (req, res) => {
+    downloadManager.stopAll();
+    res.json({ message: 'All downloads cancelled' });
+});
+
+app.get('/api/pick-directory', async (req, res) => {
+    try {
+        // Try to use Electron dialog if running in Electron
+        if (process.versions.electron) {
+            const { dialog } = require('electron');
+            const result = await dialog.showOpenDialog({
+                properties: ['openDirectory']
+            });
+            
+            if (!result.canceled && result.filePaths.length > 0) {
+                return res.json({ path: result.filePaths[0] });
+            } else {
+                return res.json({ path: null, cancelled: true });
+            }
+        }
+        
+        // Fallback for standard Node.js on Linux (using zenity)
+        if (process.platform === 'linux') {
+            const { exec } = require('child_process');
+            // Check if zenity is available
+            try {
+                require('child_process').execSync('which zenity', { stdio: 'ignore' });
+                
+                // Use zenity to pick directory
+                // --file-selection --directory: pick directory
+                // --title: set title
+                return new Promise((resolve) => {
+                    exec('zenity --file-selection --directory --title="Select Download Folder"', (error, stdout, stderr) => {
+                        if (error) {
+                            // User likely cancelled (exit code 1) or error
+                            console.log('Zenity picker cancelled or failed:', error.message);
+                            resolve(res.json({ path: null, cancelled: true }));
+                        } else {
+                            const selectedPath = stdout.trim();
+                            if (selectedPath) {
+                                resolve(res.json({ path: selectedPath }));
+                            } else {
+                                resolve(res.json({ path: null, cancelled: true }));
+                            }
+                        }
+                    });
+                });
+            } catch (e) {
+                console.log('Zenity not found, falling back to client picker');
+            }
+        } else if (process.platform === 'win32') {
+             // Windows fallback could use PowerShell script, but for now we rely on client picker
+             // or could implement later if needed.
+        }
+        
+        // Fallback to client-side picker if server-side tools unavailable
+        res.json({ path: null, error: 'Server-side picker unavailable' });
+        
+    } catch (error) {
+        console.error('Pick directory error:', error);
+        res.status(500).json({ error: 'Failed to pick directory' });
+    }
+});
+
+app.post('/api/open-folder', (req, res) => {
+    const { filePath } = req.body;
+    if (!filePath) return res.status(400).json({ error: 'File path required' });
+
+    try {
+        if (process.versions.electron) {
+            const { shell } = require('electron');
+            shell.showItemInFolder(filePath);
+            res.json({ message: 'Folder opened' });
+        } else {
+            // Fallback for standard Node.js
+            const { exec } = require('child_process');
+            let command;
+            
+            // Determine platform-specific command
+            switch (process.platform) {
+                case 'win32':
+                    // Windows: explorer /select,"path"
+                    command = `explorer /select,"${filePath.replace(/\//g, '\\')}"`;
+                    break;
+                case 'darwin':
+                    // macOS: open -R "path"
+                    command = `open -R "${filePath}"`;
+                    break;
+                default:
+                    // Linux/Other
+                    // Try to detect file manager for file selection
+                    const { execSync } = require('child_process');
+                    try {
+                        // Check for nautilus (GNOME)
+                        try {
+                            execSync('which nautilus', { stdio: 'ignore' });
+                            command = `nautilus --select "${filePath}"`;
+                        } catch (e) {
+                            // Check for dolphin (KDE)
+                            try {
+                                execSync('which dolphin', { stdio: 'ignore' });
+                                command = `dolphin --select "${filePath}"`;
+                            } catch (e2) {
+                                // Check for nemo (Cinnamon)
+                                try {
+                                    execSync('which nemo', { stdio: 'ignore' });
+                                    command = `nemo "${filePath}"`; // Nemo opens folder and selects file by default if path is file
+                                } catch (e3) {
+                                    throw new Error('No supported file manager found');
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        // Fallback to opening folder with xdg-open
+                        const dirPath = path.dirname(filePath);
+                        command = `xdg-open "${dirPath}"`;
+                    }
+                    break;
+            }
+
+            console.log(`[Server] Opening folder with command: ${command}`);
+            
+            exec(command, (error) => {
+                if (error) {
+                    console.error('[Server] Failed to open folder:', error);
+                }
+            });
+            
+            res.json({ message: 'Folder open requested' });
+        }
+    } catch (error) {
+        console.error('Failed to open folder:', error);
+        res.status(500).json({ error: 'Failed to open folder' });
+    }
+});
+
 // Serve index.html for all non-API routes (React Router support)
 app.use((req, res, next) => {
     // Skip API routes
@@ -208,6 +358,7 @@ app.use((req, res, next) => {
 // Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received, closing server gracefully');
+    downloadManager.stopAll();
     server.close(() => {
         console.log('Server closed');
         process.exit(0);
@@ -216,6 +367,7 @@ process.on('SIGTERM', () => {
 
 process.on('SIGINT', () => {
     console.log('SIGINT received, closing server gracefully');
+    downloadManager.stopAll();
     server.close(() => {
         console.log('Server closed');
         process.exit(0);
