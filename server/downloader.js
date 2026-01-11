@@ -95,8 +95,9 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--no-mtime',
             '--socket-timeout', '30',
             '--http-chunk-size', '10M',
-            '--extractor-args', 'youtube:player_client=android,web',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            // Use native Android client for downloads - often bypasses "Sign in" better than web
+            '--extractor-args', 'youtube:player_client=android',
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
             url
         ];
     } else {
@@ -134,8 +135,9 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '--retries', '10',
             '--fragment-retries', '10',
             '-c', // Continue download if partially downloaded
-            '--extractor-args', 'youtube:player_client=android,web',
-            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            // Use native Android client for downloads
+            '--extractor-args', 'youtube:player_client=android',
+            '--user-agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
             url
         ];
     }
