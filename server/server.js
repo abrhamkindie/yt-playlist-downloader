@@ -405,6 +405,7 @@ if (process.env.YOUTUBE_COOKIES_B64) {
         console.error('Failed to write cookies from env:', err.message);
     }
 }
+// Force update
 
 if (fs.existsSync(cookiesPath)) {
     console.log('cookies.txt found at:', cookiesPath);
