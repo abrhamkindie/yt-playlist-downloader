@@ -388,14 +388,28 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Decode cookies from environment variable if provided
+const cookiesPath = path.join(__dirname, 'cookies.txt');
 if (process.env.YOUTUBE_COOKIES_B64) {
     try {
-        const cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString();
-        fs.writeFileSync(path.join(__dirname, 'cookies.txt'), cookiesContent);
-        console.log('YouTube cookies loaded from environment variable');
+        const cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf-8');
+        fs.writeFileSync(cookiesPath, cookiesContent);
+        console.log('YouTube cookies loaded from YOUTUBE_COOKIES_B64');
     } catch (err) {
-        console.error('Failed to decode cookies:', err.message);
+        console.error('Failed to decode cookies from B64:', err.message);
     }
+} else if (process.env.YOUTUBE_COOKIES) {
+    try {
+        fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
+        console.log('YouTube cookies loaded from YOUTUBE_COOKIES');
+    } catch (err) {
+        console.error('Failed to write cookies from env:', err.message);
+    }
+}
+
+if (fs.existsSync(cookiesPath)) {
+    console.log('cookies.txt found at:', cookiesPath);
+} else {
+    console.log('No cookies.txt found. YouTube bot detection may occur.');
 }
 
 server.listen(PORT, () => {
