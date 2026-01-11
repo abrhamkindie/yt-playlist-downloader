@@ -64,7 +64,18 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
         return null; // No process started
     }
 
-    const ytDlpPath = path.join(__dirname, 'yt-dlp');
+    // Try to find yt-dlp - first check local binary, then use system command
+    let ytDlpPath = path.join(__dirname, 'yt-dlp');
+    let useSystemYtDlp = false;
+    
+    // In production (Render) or if local binary doesn't exist, use system command
+    if (process.env.NODE_ENV === 'production' || !fs.existsSync(ytDlpPath)) {
+        ytDlpPath = 'yt-dlp';
+        useSystemYtDlp = true;
+        console.log('[Downloader] Using system yt-dlp (pip installed)');
+    } else {
+        console.log('[Downloader] Using local yt-dlp binary');
+    }
 
     console.log(`Starting download for: ${title} to ${filePath} [Format: ${format}, Quality: ${quality}]`);
 
@@ -82,6 +93,8 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             '-o', filePath,
             '--newline',
             '--no-mtime',
+            '--socket-timeout', '30',
+            '--http-chunk-size', '10M',
             '--extractor-args', 'youtube:player_client=android,web',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             url
@@ -137,7 +150,10 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
 
     let downloadProcess;
     try {
-        downloadProcess = spawn(ytDlpPath, args, { detached: true });
+        downloadProcess = spawn(ytDlpPath, args, { 
+            detached: true,
+            shell: useSystemYtDlp // Use shell for system command
+        });
         console.log(`[Downloader] Spawned yt-dlp with PID: ${downloadProcess.pid}`);
     } catch (err) {
         console.error(`Failed to spawn yt-dlp: ${err.message}`);

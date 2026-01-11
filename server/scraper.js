@@ -3,12 +3,19 @@ const path = require('path');
 
 async function scrapePlaylist(url) {
     return new Promise((resolve, reject) => {
-        const ytDlpPath = path.join(__dirname, 'yt-dlp');
-        
-        // Check if yt-dlp exists
         const fs = require('fs');
-        if (!fs.existsSync(ytDlpPath)) {
-            return reject(new Error('yt-dlp not found. Please install yt-dlp.'));
+        
+        // Try to find yt-dlp - first check local binary, then use system command
+        let ytDlpPath = path.join(__dirname, 'yt-dlp');
+        let useSystemYtDlp = false;
+        
+        // In production (Render) or if local binary doesn't exist, use system command
+        if (process.env.NODE_ENV === 'production' || !fs.existsSync(ytDlpPath)) {
+            ytDlpPath = 'yt-dlp';
+            useSystemYtDlp = true;
+            console.log('[Scraper] Using system yt-dlp (pip installed)');
+        } else {
+            console.log('[Scraper] Using local yt-dlp binary');
         }
         
         // Detect if URL is a playlist
@@ -16,68 +23,79 @@ async function scrapePlaylist(url) {
         
         // --flat-playlist: Get video info without downloading
         // -J: Dump JSON output
-        // --yes-playlist: Always extract playlist even if URL also points to a video
         const args = [
             '--flat-playlist',
             '-J',
             '--no-warnings',
+            '--socket-timeout', '30',
         ];
         
-        // Add --yes-playlist flag BEFORE other args if it's a playlist URL
-        // This ensures that when a URL has both video and playlist IDs, we get the full playlist
+        // Add --yes-playlist flag if it's a playlist URL
         if (isPlaylist) {
             args.push('--yes-playlist');
             console.log('[Scraper] Detected playlist URL, using --yes-playlist flag');
         } else {
-            // Explicitly set --no-playlist for single videos to be clear
             args.push('--no-playlist');
             console.log('[Scraper] Detected single video URL, using --no-playlist flag');
         }
         
+        // Add robust bypass options for bot detection
+        // Using android,web is generally more stable and was working locally
         args.push('--extractor-args', 'youtube:player_client=android,web');
         args.push('--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+        args.push('--http-chunk-size', '10M');
+        
         args.push(url);
         
         console.log(`[Scraper] Full command: yt-dlp ${args.join(' ')}`);
-
         console.log(`Fetching playlist metadata with yt-dlp: ${url}`);
         
-        const process = spawn(ytDlpPath, args, {
-            timeout: 60000 // 60 second timeout
+        const ytDlpProcess = spawn(ytDlpPath, args, {
+            timeout: 60000,
+            shell: useSystemYtDlp // Use shell for system command
         });
 
         let stdoutData = '';
         let stderrData = '';
         let hasError = false;
 
-        process.stdout.on('data', (data) => {
+        ytDlpProcess.stdout.on('data', (data) => {
             stdoutData += data.toString();
         });
 
-        process.stderr.on('data', (data) => {
+        ytDlpProcess.stderr.on('data', (data) => {
             stderrData += data.toString();
         });
 
-        process.on('error', (error) => {
+        ytDlpProcess.on('error', (error) => {
             hasError = true;
             console.error(`Failed to spawn yt-dlp: ${error.message}`);
             reject(new Error(`Failed to start yt-dlp: ${error.message}`));
         });
 
-        process.on('close', (code) => {
+        ytDlpProcess.on('close', (code) => {
             if (hasError) return; // Already handled in error event
 
             if (code !== 0) {
-                console.error(`yt-dlp error: ${stderrData}`);
+                console.error(`yt-dlp error output: ${stderrData}`);
                 
-                // Parse common errors
+                // Parse common errors with more detail
                 let errorMessage = 'Failed to fetch playlist';
-                if (stderrData.includes('404') || stderrData.includes('not found')) {
+                const errLower = stderrData.toLowerCase();
+                
+                if (errLower.includes('sign in') || errLower.includes('cookies')) {
+                     errorMessage = 'YouTube requires sign-in. This content might be age-restricted or premium.';
+                } else if (errLower.includes('429') || errLower.includes('too many requests')) {
+                    errorMessage = 'Rate limit exceeded (429). Please try again later.';
+                } else if (errLower.includes('404') || errLower.includes('not found')) {
                     errorMessage = 'Playlist not found. Please check the URL.';
-                } else if (stderrData.includes('private') || stderrData.includes('unavailable')) {
+                } else if (errLower.includes('private') || errLower.includes('unavailable')) {
                     errorMessage = 'Playlist is private or unavailable.';
-                } else if (stderrData.includes('network') || stderrData.includes('timeout')) {
+                } else if (errLower.includes('network') || errLower.includes('timeout')) {
                     errorMessage = 'Network error. Please check your connection.';
+                } else if (stderrData.length > 0) {
+                    // Include the actual error message if it's not one of the above
+                    errorMessage = `yt-dlp error: ${stderrData.split('\n')[0]}`; 
                 }
                 
                 return reject(new Error(errorMessage));
@@ -114,14 +132,17 @@ async function scrapePlaylist(url) {
                     .map(entry => {
                         let thumbnail = `https://i.ytimg.com/vi/${entry.id}/hqdefault.jpg`;
                         if (entry.thumbnails && entry.thumbnails.length > 0) {
-                            thumbnail = entry.thumbnails[entry.thumbnails.length - 1].url;
+                            // Try to find a medium quality thumbnail
+                            const mediumThumb = entry.thumbnails.find(t => t.height >= 360) || entry.thumbnails[entry.thumbnails.length - 1];
+                            thumbnail = mediumThumb.url;
                         }
 
                         return {
                             title: entry.title || 'Untitled',
                             url: entry.url || `https://www.youtube.com/watch?v=${entry.id}`,
                             thumbnail: thumbnail,
-                            id: entry.id
+                            id: entry.id,
+                            duration: entry.duration
                         };
                     });
 
@@ -134,17 +155,18 @@ async function scrapePlaylist(url) {
                 resolve(videos);
             } catch (err) {
                 console.error('Failed to parse yt-dlp output:', err);
+                console.error('Raw output start:', stdoutData.substring(0, 200));
                 reject(new Error('Failed to parse playlist data'));
             }
         });
 
         // Timeout handler
         setTimeout(() => {
-            if (!hasError && process.exitCode === null) {
-                process.kill();
+            if (!hasError && ytDlpProcess.exitCode === null) {
+                ytDlpProcess.kill();
                 reject(new Error('Request timed out. Please try again.'));
             }
-        }, 65000); // 65 seconds (5 seconds after spawn timeout)
+        }, 65000); // 65 seconds
     });
 }
 

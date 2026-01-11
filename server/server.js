@@ -81,8 +81,8 @@ app.post('/api/analyze', async (req, res) => {
 
         res.json({ videos, message: 'Playlist analyzed successfully' });
     } catch (error) {
-        console.error('Error analyzing playlist:', error);
-        res.status(500).json({ error: 'Failed to analyze playlist' });
+        console.error('Error analyzing playlist:', error.message);
+        res.status(500).json({ error: error.message || 'Failed to analyze playlist' });
     }
 });
 
