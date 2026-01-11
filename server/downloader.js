@@ -154,7 +154,7 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
     try {
         downloadProcess = spawn(ytDlpPath, args, { 
             detached: true,
-            shell: useSystemYtDlp // Use shell for system command
+            shell: false // Don't use shell to avoid syntax errors with special chars in args
         });
         console.log(`[Downloader] Spawned yt-dlp with PID: ${downloadProcess.pid}`);
     } catch (err) {

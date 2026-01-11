@@ -52,7 +52,7 @@ async function scrapePlaylist(url) {
         
         const ytDlpProcess = spawn(ytDlpPath, args, {
             timeout: 60000,
-            shell: useSystemYtDlp // Use shell for system command
+            shell: false // Don't use shell to avoid syntax errors with special chars in args
         });
 
         let stdoutData = '';
