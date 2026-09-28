@@ -1,3 +1,6 @@
 node_modules
 .env
 downloads
+cookies.txt
+yt-dlp
+yt-dlp.exe

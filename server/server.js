@@ -1,428 +1,393 @@
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
-const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
-const { scrapePlaylist } = require('./scraper');
-const { downloadVideo } = require('./downloader');
-const downloadManager = require('./downloadManager');
+
+const { PORT, CLIENT_ORIGINS, IS_HOSTED } = require('./lib/config');
+const { ALL_FORMATS, QUALITIES, MAX_PLAYLIST_VIDEOS } = require('./lib/constants');
+const { HttpError } = require('./lib/errors');
+const { scrapePlaylist } = require('./services/scraper');
+const { downloadVideo } = require('./services/downloader');
+const downloadManager = require('./services/downloadManager');
+const { removeDir } = require('./lib/files');
+const {
+  HOSTED_DOWNLOAD_ROOT,
+  resolveDownloadDir,
+  validateLocalDownloadPath,
+} = require('./lib/config');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-    cors: {
-        origin: process.env.CLIENT_URL || ["https://streampull.vercel.app", "http://localhost:5173"],
-        methods: ["GET", "POST"],
-        credentials: true
-    }
+  cors: {
+    origin: CLIENT_ORIGINS,
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 });
 
-const PORT = process.env.PORT || 3000;
-
-// CORS for React dev server
-app.use(cors({
-    origin: process.env.CLIENT_URL || ["https://streampull.vercel.app", "http://localhost:5173"],
-    credentials: true
-}));
-
-// Serve static files from client/dist in production
-app.use(express.static(path.join(__dirname, '../client/dist')));
-app.use(express.json({ limit: '10mb' }));
+app.set('trust proxy', 1);
+app.use(helmet({ contentSecurityPolicy: false })); // CSP off: client is served from same origin with Vite assets
+app.use(express.json({ limit: '100kb' }));
 
 // Request logging
-app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-    next();
+app.use((req, _res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
 });
 
-// Global error handler
-app.use((err, req, res, next) => {
-    console.error('[Server Error]', err);
-    res.status(500).json({ 
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+// API routes are registered on a router so the JSON 404 + error handler
+// can be scoped correctly.
+const api = express.Router();
+
+// Basic abuse protection on the API surface
+api.use(
+  '/analyze',
+  rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: true, legacyHeaders: false }),
+);
+api.use(
+  '/download',
+  rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false }),
+);
+
+// ---------------------------------------------------------------
+// Analyze
+// ---------------------------------------------------------------
+api.post('/analyze', async (req, res, next) => {
+  try {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string') {
+      throw new HttpError(400, 'URL is required');
+    }
+
+    const videos = await scrapePlaylist(url.trim());
+    if (!videos || videos.length === 0) {
+      throw new HttpError(404, 'No videos found');
+    }
+    if (videos.length > MAX_PLAYLIST_VIDEOS) {
+      throw new HttpError(400, `Playlist too large (${videos.length} videos). Max is ${MAX_PLAYLIST_VIDEOS}.`);
+    }
+
+    res.json({ videos, message: 'Playlist analyzed successfully' });
+  } catch (error) {
+    next(error);
+  }
 });
 
-// Listen to download manager events and broadcast to clients
-downloadManager.on('cancelled', ({ id, url }) => {
-    console.log(`[Server] Broadcasting cancelled event for ${id}`);
-    io.emit('cancelled', { id, url });
+// ---------------------------------------------------------------
+// Download
+// ---------------------------------------------------------------
+api.post('/download', async (req, res, next) => {
+  try {
+    let { url, format, quality, title, id, downloadPath, createSubfolder, playlistTitle } = req.body || {};
+
+    if (!url || typeof url !== 'string') {
+      throw new HttpError(400, 'Valid URL is required');
+    }
+    url = url.trim();
+    if (url.startsWith('/')) url = `https://www.youtube.com${url}`;
+    if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+      throw new HttpError(400, 'Please provide a valid YouTube URL');
+    }
+
+    format = format || 'mp4';
+    quality = quality || 'best';
+    if (!ALL_FORMATS.includes(format)) throw new HttpError(400, `Invalid format: ${format}`);
+    if (!QUALITIES.includes(quality)) throw new HttpError(400, `Invalid quality: ${quality}`);
+
+    // Skip re-scraping when the client already has metadata.
+    let videos;
+    if (title && id) {
+      videos = [{
+        id,
+        url,
+        title,
+        thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      }];
+    } else {
+      videos = await scrapePlaylist(url);
+    }
+    if (!videos || videos.length === 0) {
+      throw new HttpError(404, 'No videos found');
+    }
+
+    // Resolve + validate the destination directory.
+    let outputDir;
+    try {
+      outputDir = resolveDownloadDir({ downloadPath, playlistTitle, createSubfolder: createSubfolder !== false });
+    } catch (err) {
+      throw new HttpError(400, err.message);
+    }
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    let queued = 0;
+    for (const video of videos) {
+      const task = {
+        id: video.id,
+        url: video.url,
+        title: video.title,
+        start: () =>
+          downloadVideo({
+            url: video.url,
+            title: video.title,
+            outputDir,
+            format,
+            quality,
+            videoId: video.id,
+            io,
+            onComplete: (filePath) => downloadManager.handleComplete(video.id, { filePath }),
+            onError: (err) => {
+              // Late events after cancellation are ignored by the manager.
+              downloadManager.handleError(video.id, err);
+            },
+          }),
+      };
+      if (downloadManager.addToQueue(task)) queued += 1;
+    }
+
+    if (queued === 0) {
+      const existing = downloadManager.getResult(videos[0].id);
+      throw new HttpError(409, existing ? 'Already downloaded or in progress' : 'Nothing queued');
+    }
+
+    const response = { videos, message: 'Downloads queued', queued };
+    if (videos.length === 1) response.downloadId = videos[0].id;
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
 });
 
-// Handle download manager errors
-downloadManager.on('error', ({ id, error }) => {
-    console.log(`[Server] Broadcasting error event for ${id}: ${error}`);
-    io.emit('download-error', { id, error });
+// ---------------------------------------------------------------
+// Status / cancel
+// ---------------------------------------------------------------
+api.get('/status', (_req, res) => {
+  res.json({
+    queue: downloadManager.getSnapshot(),
+    downloads: downloadManager.getAllResults(),
+    hosted: IS_HOSTED,
+  });
 });
+
+api.get('/status/:id', (req, res) => {
+  const record = downloadManager.getResult(req.params.id);
+  if (!record) return res.status(404).json({ error: 'Download not found' });
+  res.json(record);
+});
+
+api.post('/cancel/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id) throw new HttpError(400, 'Download ID required');
+  if (downloadManager.cancelDownload(id)) {
+    return res.json({ message: 'Download cancelled' });
+  }
+  res.status(404).json({ error: 'Download not found' });
+});
+
+api.post('/cancel-all', (_req, res) => {
+  downloadManager.stopAll();
+  res.json({ message: 'All downloads cancelled' });
+});
+
+// ---------------------------------------------------------------
+// Hosted mode: stream finished files back to the browser
+// ---------------------------------------------------------------
+if (IS_HOSTED) {
+  const { getResult } = downloadManager;
+  api.get('/files/:id', (req, res) => {
+    const record = getResult(req.params.id);
+    if (!record || record.status !== 'complete' || !record.filePath) {
+      return res.status(404).json({ error: 'File not available' });
+    }
+    // Only serve files inside the hosted download root (defense in depth).
+    const resolved = path.resolve(record.filePath);
+    if (!resolved.startsWith(path.resolve(HOSTED_DOWNLOAD_ROOT))) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    if (!fs.existsSync(resolved)) {
+      return res.status(410, ).json({ error: 'File no longer exists on the server' });
+    }
+    res.download(resolved, path.basename(resolved));
+  });
+}
+
+// ---------------------------------------------------------------
+// Local (Electron/desktop) helpers: directory pick + open folder.
+// Disabled entirely in hosted mode — these endpoints are the
+// security-sensitive ones and make no sense on a server.
+// ---------------------------------------------------------------
+if (!IS_HOSTED) {
+  const { execFile } = require('child_process');
+  const { openAppFolderPicker } = require('./services/systemPicker');
+
+  api.get('/pick-directory', async (req, res, next) => {
+    try {
+      if (process.versions.electron) {
+        const { dialog } = require('electron');
+        const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+        if (!result.canceled && result.filePaths.length > 0) {
+          return res.json({ path: result.filePaths[0] });
+        }
+        return res.json({ path: null, cancelled: true });
+      }
+
+      // Linux desktop picker via zenity (local dev convenience).
+      if (process.platform === 'linux' && !req.query.skipSystem) {
+        const picked = await openAppFolderPicker();
+        if (picked.cancelled || picked.path) return res.json(picked);
+      }
+
+      res.json({ path: null, error: 'Server-side picker unavailable' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Open the folder containing a completed download. Argument-array based —
+  // never string interpolation into a shell.
+  api.post('/open-folder', (req, res, next) => {
+    try {
+      const { filePath } = req.body || {};
+      if (!filePath || typeof filePath !== 'string') {
+        throw new HttpError(400, 'File path required');
+      }
+
+      if (process.versions.electron) {
+        const { shell } = require('electron');
+        shell.showItemInFolder(filePath);
+        return res.json({ message: 'Folder opened' });
+      }
+
+      const dir = path.dirname(filePath);
+      const commandsByPlatform = {
+        win32: ['explorer', [dir]],
+        darwin: ['open', [dir]],
+        linux: ['xdg-open', [dir]],
+      };
+      const entry = commandsByPlatform[process.platform];
+      if (!entry) throw new HttpError(400, 'Unsupported platform');
+
+      execFile(entry[0], entry[1], (error) => {
+        if (error) console.error(`[open-folder] failed: ${error.message}`);
+      });
+      res.json({ message: 'Folder open requested' });
+    } catch (error) {
+      next(error);
+    }
+  });
+}
+
+app.use('/api', api);
+
+// JSON 404 for unknown API routes, before the SPA fallback.
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Serve the built client (production).
+// Express 5: use a middleware catch-all instead of app.get('*') —
+// path-to-regexp v8 no longer accepts a bare '*'.
+const CLIENT_DIST = path.join(__dirname, '../client/dist');
+if (fs.existsSync(CLIENT_DIST)) {
+  app.use(express.static(CLIENT_DIST));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(CLIENT_DIST, 'index.html'));
+  });
+}
+
+// ---- Socket.IO -------------------------------------------------
+downloadManager.on('cancelled', ({ id, url }) => io.emit('cancelled', { id, url }));
+downloadManager.on('download-error', ({ id }) => {
+  const record = downloadManager.getResult(id) || {};
+  io.emit('download-error', { id, url: record.url, error: record.error || 'Download failed' });
+});
+downloadManager.on('complete', ({ id }) => {
+  const record = downloadManager.getResult(id) || {};
+  io.emit('download-complete', { id, url: record.url, filePath: record.filePath });
+});
+downloadManager.on('queue-update', (snapshot) => io.emit('queue-update', snapshot));
 
 io.on('connection', (socket) => {
-    console.log('New client connected');
-
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
-    });
+  console.log('Client connected');
+  socket.on('disconnect', () => console.log('Client disconnected'));
 });
 
-app.post('/api/analyze', async (req, res) => {
-    try {
-        const { url } = req.body;
-        if (!url) {
-            return res.status(400).json({ error: 'URL is required' });
-        }
-
-        console.log(`Analyzing playlist: ${url}`);
-        const videos = await scrapePlaylist(url);
-        
-        if (!videos || videos.length === 0) {
-            return res.status(404).json({ error: 'No videos found' });
-        }
-
-        res.json({ videos, message: 'Playlist analyzed successfully' });
-    } catch (error) {
-        console.error('Error analyzing playlist:', error.message);
-        res.status(500).json({ error: error.message || 'Failed to analyze playlist' });
-    }
+// ---------------------------------------------------------------
+// Central error handler (registered LAST so route errors reach it)
+// ---------------------------------------------------------------
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  const status = err instanceof HttpError ? err.status : 500;
+  if (status >= 500) console.error('[Server Error]', err);
+  res.status(status).json({
+    error: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' ? { stack: err.stack } : {}),
+  });
 });
 
-    app.post('/api/download', async (req, res) => {
-    try {
-        let { url, format, quality, title, id, downloadPath, createSubfolder, playlistTitle } = req.body;
-        
-        // Validation
-        if (!url || typeof url !== 'string') {
-            return res.status(400).json({ error: 'Valid URL is required' });
-        }
-
-        url = url.trim();
-        
-        // Handle relative URLs
-        if (url.startsWith('/')) {
-            url = `https://www.youtube.com${url}`;
-        }
-
-        // Basic URL validation
-        if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
-            return res.status(400).json({ error: 'Please provide a valid YouTube URL' });
-        }
-
-        // Validate format
-        const validFormats = ['mp4', 'webm', 'mp3'];
-        if (format && !validFormats.includes(format)) {
-            return res.status(400).json({ error: 'Invalid format' });
-        }
-
-        let videos = [];
-        
-        // Optimization: If we already have the video metadata, skip scraping
-        if (title && id) {
-            console.log(`Using provided metadata for: ${title}`);
-            videos = [{
-                id,
-                url,
-                title,
-                thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
-            }];
-        } else {
-            console.log(`Analyzing and downloading: ${url}`);
-            videos = await scrapePlaylist(url);
-        }
-        
-        if (!videos || videos.length === 0) {
-            return res.status(404).json({ error: 'No videos found' });
-        }
-
-        // Queue all videos for download
-        // Use provided downloadPath or default
-        let finalDownloadPath = downloadPath || path.join(__dirname, 'downloads');
-        
-        // Handle subfolder creation
-        if (createSubfolder && playlistTitle) {
-            // Sanitize playlist title to be safe for directory name
-            const sanitizedTitle = playlistTitle.replace(/[<>:"/\\|?*]+/g, '_').trim();
-            finalDownloadPath = path.join(finalDownloadPath, sanitizedTitle);
-        }
-        
-        if (!fs.existsSync(finalDownloadPath)) {
-            try {
-                fs.mkdirSync(finalDownloadPath, { recursive: true });
-            } catch (err) {
-                console.error('Failed to create download directory:', err);
-                return res.status(500).json({ error: 'Failed to create download directory' });
-            }
-        }
-
-        videos.forEach(video => {
-            const task = {
-                id: video.id,
-                url: video.url,
-                title: video.title,
-                start: () => {
-                    return downloadVideo(
-                        video.url, 
-                        video.title, 
-                        finalDownloadPath, 
-                        format || 'mp4', 
-                        quality || 'best', 
-                        {}, 
-                        io,
-                        () => downloadManager.handleComplete(video.id),
-                        (err) => downloadManager.handleError(video.id, err),
-                        video.id
-                    );
-                }
-            };
-
-            downloadManager.addToQueue(task);
-        });
-
-        const response = { videos, message: 'Downloads queued' };
-        if (videos.length === 1) {
-            response.downloadId = videos[0].id;
-        }
-
-        res.json(response);
-    } catch (error) {
-        console.error('Error processing download:', error);
-        const errorMessage = error.message.includes('yt-dlp') 
-            ? 'Failed to fetch video(s). Please check the URL and try again.'
-            : 'Failed to process download';
-        res.status(500).json({ error: errorMessage });
-    }
-});
-
-app.post('/api/cancel/:id', (req, res) => {
-    const { id } = req.params;
-    if (!id) return res.status(400).json({ error: 'Download ID required' });
-
-    const success = downloadManager.cancelDownload(id);
-    if (success) {
-        res.json({ message: 'Download cancelled' });
-    } else {
-        res.status(404).json({ error: 'Download not found' });
-    }
-});
-
-app.post('/api/cancel-all', (req, res) => {
-    downloadManager.stopAll();
-    res.json({ message: 'All downloads cancelled' });
-});
-
-app.get('/api/pick-directory', async (req, res) => {
-    try {
-        // Try to use Electron dialog if running in Electron
-        if (process.versions.electron) {
-            const { dialog } = require('electron');
-            const result = await dialog.showOpenDialog({
-                properties: ['openDirectory']
-            });
-            
-            if (!result.canceled && result.filePaths.length > 0) {
-                return res.json({ path: result.filePaths[0] });
-            } else {
-                return res.json({ path: null, cancelled: true });
-            }
-        }
-        
-        // Fallback for standard Node.js on Linux (using zenity)
-        if (process.platform === 'linux') {
-            const { exec } = require('child_process');
-            // Check if zenity is available
-            try {
-                require('child_process').execSync('which zenity', { stdio: 'ignore' });
-                
-                // Use zenity to pick directory
-                // --file-selection --directory: pick directory
-                // --title: set title
-                return new Promise((resolve) => {
-                    exec('zenity --file-selection --directory --title="Select Download Folder"', (error, stdout, stderr) => {
-                        if (error) {
-                            // User likely cancelled (exit code 1) or error
-                            console.log('Zenity picker cancelled or failed:', error.message);
-                            resolve(res.json({ path: null, cancelled: true }));
-                        } else {
-                            const selectedPath = stdout.trim();
-                            if (selectedPath) {
-                                resolve(res.json({ path: selectedPath }));
-                            } else {
-                                resolve(res.json({ path: null, cancelled: true }));
-                            }
-                        }
-                    });
-                });
-            } catch (e) {
-                console.log('Zenity not found, falling back to client picker');
-            }
-        } else if (process.platform === 'win32') {
-             // Windows fallback could use PowerShell script, but for now we rely on client picker
-             // or could implement later if needed.
-        }
-        
-        // Fallback to client-side picker if server-side tools unavailable
-        res.json({ path: null, error: 'Server-side picker unavailable' });
-        
-    } catch (error) {
-        console.error('Pick directory error:', error);
-        res.status(500).json({ error: 'Failed to pick directory' });
-    }
-});
-
-app.post('/api/open-folder', (req, res) => {
-    const { filePath } = req.body;
-    if (!filePath) return res.status(400).json({ error: 'File path required' });
-
-    try {
-        if (process.versions.electron) {
-            const { shell } = require('electron');
-            shell.showItemInFolder(filePath);
-            res.json({ message: 'Folder opened' });
-        } else {
-            // Fallback for standard Node.js
-            const { exec } = require('child_process');
-            let command;
-            
-            // Determine platform-specific command
-            switch (process.platform) {
-                case 'win32':
-                    // Windows: explorer /select,"path"
-                    command = `explorer /select,"${filePath.replace(/\//g, '\\')}"`;
-                    break;
-                case 'darwin':
-                    // macOS: open -R "path"
-                    command = `open -R "${filePath}"`;
-                    break;
-                default:
-                    // Linux/Other
-                    // Try to detect file manager for file selection
-                    const { execSync } = require('child_process');
-                    try {
-                        // Check for nautilus (GNOME)
-                        try {
-                            execSync('which nautilus', { stdio: 'ignore' });
-                            command = `nautilus --select "${filePath}"`;
-                        } catch (e) {
-                            // Check for dolphin (KDE)
-                            try {
-                                execSync('which dolphin', { stdio: 'ignore' });
-                                command = `dolphin --select "${filePath}"`;
-                            } catch (e2) {
-                                // Check for nemo (Cinnamon)
-                                try {
-                                    execSync('which nemo', { stdio: 'ignore' });
-                                    command = `nemo "${filePath}"`; // Nemo opens folder and selects file by default if path is file
-                                } catch (e3) {
-                                    throw new Error('No supported file manager found');
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        // Fallback to opening folder with xdg-open
-                        const dirPath = path.dirname(filePath);
-                        command = `xdg-open "${dirPath}"`;
-                    }
-                    break;
-            }
-
-            console.log(`[Server] Opening folder with command: ${command}`);
-            
-            exec(command, (error) => {
-                if (error) {
-                    console.error('[Server] Failed to open folder:', error);
-                }
-            });
-            
-            res.json({ message: 'Folder open requested' });
-        }
-    } catch (error) {
-        console.error('Failed to open folder:', error);
-        res.status(500).json({ error: 'Failed to open folder' });
-    }
-});
-
-// Serve index.html for all non-API routes (React Router support)
-app.use((req, res, next) => {
-    // Skip API routes
-    if (req.path.startsWith('/api')) {
-        return next();
-    }
-    
-    const indexPath = path.join(__dirname, '../client/dist/index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        res.status(404).send('Application not built. Run: cd client && npm run build');
-    }
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, closing server gracefully');
-    downloadManager.stopAll();
+// Graceful shutdown: stop downloads, close socket.io, then HTTP.
+function shutdown(signal) {
+  console.log(`${signal} received, shutting down gracefully`);
+  downloadManager.stopAll();
+  io.close(() => {
     server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
+      console.log('Server closed');
+      process.exit(0);
     });
-});
+  });
+  // Hard exit fallback if sockets refuse to die.
+  setTimeout(() => process.exit(0), 5_000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
-process.on('SIGINT', () => {
-    console.log('SIGINT received, closing server gracefully');
-    downloadManager.stopAll();
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
-});
-
-// Uncaught exception handler
 process.on('uncaughtException', (error) => {
-    console.error('Uncaught Exception:', error);
-    if (process.env.NODE_ENV !== 'production') {
-        process.exit(1);
-    }
+  console.error('Uncaught Exception:', error);
+  if (process.env.NODE_ENV !== 'production') process.exit(1);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
 });
 
-// Unhandled rejection handler
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Decode cookies from environment variable if provided
-const cookiesPath = path.join(__dirname, 'cookies.txt');
-if (process.env.YOUTUBE_COOKIES_B64) {
-    try {
-        const cookiesContent = Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf-8');
-        fs.writeFileSync(cookiesPath, cookiesContent);
-        console.log('YouTube cookies loaded from YOUTUBE_COOKIES_B64');
-    } catch (err) {
-        console.error('Failed to decode cookies from B64:', err.message);
-    }
-} else if (process.env.YOUTUBE_COOKIES) {
-    try {
-        fs.writeFileSync(cookiesPath, process.env.YOUTUBE_COOKIES);
-        console.log('YouTube cookies loaded from YOUTUBE_COOKIES');
-    } catch (err) {
-        console.error('Failed to write cookies from env:', err.message);
-    }
+// Cookies: write from env if provided (never commit the file itself).
+const { COOKIES_PATH } = require('./lib/config');
+if (process.env.YOUTUBE_COOKIES_B64 || process.env.YOUTUBE_COOKIES) {
+  try {
+    const content = process.env.YOUTUBE_COOKIES_B64
+      ? Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf-8')
+      : process.env.YOUTUBE_COOKIES;
+    fs.writeFileSync(COOKIES_PATH, content);
+    console.log('YouTube cookies loaded from environment');
+  } catch (err) {
+    console.error('Failed to write cookies from env:', err.message);
+  }
 }
-// Force update
-
-if (fs.existsSync(cookiesPath)) {
-    console.log('cookies.txt found at:', cookiesPath);
+if (fs.existsSync(COOKIES_PATH)) {
+  console.log('cookies.txt found at:', COOKIES_PATH);
 } else {
-    console.log('No cookies.txt found. YouTube bot detection may occur.');
+  console.log('No cookies.txt found. YouTube bot detection may occur.');
 }
 
-server.listen(PORT, () => {
+// Start listening. Resolve a promise when ready (Electron waits on this).
+const ready = new Promise((resolve) => {
+  server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`Client URL: ${process.env.CLIENT_URL || '*'}`);
-}).on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use`);
-        process.exit(1);
-    } else {
-        console.error('Server error:', error);
-        process.exit(1);
-    }
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Hosted mode: ${IS_HOSTED}`);
+    resolve();
+  });
+}).catch?.(() => {});
+
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use`);
+    process.exit(1);
+  }
+  console.error('Server error:', error);
+  process.exit(1);
 });
+
+module.exports = { app, server, io, ready };
