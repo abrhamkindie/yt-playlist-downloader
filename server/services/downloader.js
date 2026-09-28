@@ -19,6 +19,10 @@ function buildArgs({ url, format, quality, filePath }) {
     '--socket-timeout', '30',
     '--http-chunk-size', '10M',
     '--ffmpeg-location', ffmpegPath,
+    // Concurrent fragment downloads — YouTube DASH streams are fragmented,
+    // and without -N yt-dlp fetches them sequentially. This is the single
+    // biggest speed factor (old code had it; keep it).
+    '-N', '4',
     // NOTE: no player_client override — recent yt-dlp default clients are
     // better tuned than the legacy android workaround (which can 403 or
     // miss formats on current binaries).

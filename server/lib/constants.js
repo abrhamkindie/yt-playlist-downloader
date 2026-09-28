@@ -21,8 +21,8 @@ const HEIGHT_FILTERS = {
   '360p': '[height<=360]',
 };
 
-// Download queue
-const MAX_CONCURRENT_DOWNLOADS = 3;
+// Download queue — tune with MAX_CONCURRENT_DOWNLOADS env var
+const MAX_CONCURRENT_DOWNLOADS = Math.max(1, Number(process.env.MAX_CONCURRENT_DOWNLOADS) || 3);
 const MAX_PLAYLIST_VIDEOS = 500;
 
 // Retention of finished/failed records in memory (ms) before pruning
