@@ -17,6 +17,7 @@ class DownloadManager extends EventEmitter {
     async processQueue() {
         if (this.activeDownloads.size >= this.maxConcurrency || this.queue.length === 0) {
             return;
+            
         }
 
         const task = this.queue.shift();
