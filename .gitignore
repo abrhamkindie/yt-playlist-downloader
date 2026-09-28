@@ -11,6 +11,14 @@ downloads/
 *.mkv
 *.webm
 
+# Credentials — NEVER commit. Export your own and keep it local.
+cookies.txt
+**/cookies.txt
+
+# yt-dlp binaries — download at install time, don't commit
+yt-dlp
+yt-dlp.exe
+
 # Environment variables
 .env
 .env.local
