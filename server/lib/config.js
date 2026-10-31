@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const SERVER_ROOT = path.join(__dirname, '..');
 const PROJECT_ROOT = path.join(SERVER_ROOT, '..');
@@ -17,8 +18,45 @@ const IS_HOSTED = IS_PROD && !IS_ELECTRON;
 
 const PORT = Number(process.env.PORT) || 3000;
 
+/** Is `p` an existing, writable directory? */
+function isWritableDir(p) {
+  try {
+    return fs.statSync(p).isDirectory() && fs.accessSync(p, fs.constants.W_OK) === undefined;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A writable downloads folder for the packaged desktop app. Inside an
+ * AppImage / .deb install the bundle directory is read-only, so we fall back
+ * to the user's real Downloads folder (Electron's `app.getPath` when present).
+ */
+function userDownloadsDir() {
+  if (IS_ELECTRON) {
+    try {
+      const { app } = require('electron');
+      if (app && typeof app.getPath === 'function') {
+        try {
+          return app.getPath('downloads');
+        } catch {
+          return path.join(app.getPath('userData'), 'downloads');
+        }
+      }
+    } catch {
+      /* not available outside the main process context */
+    }
+  }
+  return path.join(os.homedir(), 'Downloads');
+}
+
 // Directory downloads are saved to when the client doesn't provide one.
-const DEFAULT_DOWNLOADS_DIR = path.join(SERVER_ROOT, 'downloads');
+// Keep using the in-bundle folder while it's writable (local dev / plain
+// Node), but redirect to a user-writable folder once packaged read-only.
+const BUNDLE_DOWNLOADS_DIR = path.join(SERVER_ROOT, 'downloads');
+const DEFAULT_DOWNLOADS_DIR = isWritableDir(BUNDLE_DOWNLOADS_DIR)
+  ? BUNDLE_DOWNLOADS_DIR
+  : userDownloadsDir();
 
 // In hosted mode downloads are always confined to this root.
 const HOSTED_DOWNLOAD_ROOT = process.env.DOWNLOADS_DIR || DEFAULT_DOWNLOADS_DIR;

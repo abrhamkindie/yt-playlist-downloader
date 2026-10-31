@@ -2,6 +2,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert');
 const { sanitizeFilename, uniqueFilePath } = require('../lib/files');
 const { friendlyYtdlpError } = require('../lib/errors');
+const { parseYouTubeUrl } = require('../lib/urls');
 const { parseProgressLine, buildArgs } = require('../services/downloader');
 const { validateLocalDownloadPath } = require('../lib/config');
 const fs = require('fs');
@@ -74,6 +75,45 @@ describe('friendlyYtdlpError', () => {
 
   test('uses fallback for empty stderr', () => {
     assert.strictEqual(friendlyYtdlpError('', 'Download failed. Please try again.'), 'Download failed. Please try again.');
+  });
+
+  test('maps invalid URL errors instead of leaking raw yt-dlp output', () => {
+    const msg = friendlyYtdlpError("ERROR: [generic] 'not a url' is not a valid URL");
+    assert.match(msg, /valid YouTube URL/);
+  });
+});
+
+describe('parseYouTubeUrl', () => {
+  test('accepts playlist, watch and youtu.be links', () => {
+    assert.ok(parseYouTubeUrl('https://www.youtube.com/playlist?list=PL123'));
+    assert.ok(parseYouTubeUrl('https://youtube.com/watch?v=abc'));
+    assert.ok(parseYouTubeUrl('https://youtu.be/abc'));
+    assert.ok(parseYouTubeUrl('https://music.youtube.com/playlist?list=PL123'));
+  });
+
+  test('prefixes relative youtube paths', () => {
+    assert.strictEqual(parseYouTubeUrl('/watch?v=abc'), 'https://www.youtube.com/watch?v=abc');
+  });
+
+  test('rejects non-URL text with a friendly 400', () => {
+    assert.throws(
+      () => parseYouTubeUrl('Add skeleton loading placeholders for the video list while analyzing'),
+      (err) => err.status === 400 && /valid URL/.test(err.message) && !/yt-dlp/.test(err.message),
+    );
+  });
+
+  test('rejects non-YouTube hosts', () => {
+    assert.throws(() => parseYouTubeUrl('https://example.com/video'), (err) => err.status === 400);
+  });
+
+  test('rejects non-http protocols', () => {
+    assert.throws(() => parseYouTubeUrl('file:///etc/passwd'), (err) => err.status === 400);
+  });
+
+  test('rejects empty or non-string input', () => {
+    assert.throws(() => parseYouTubeUrl(''), (err) => err.status === 400);
+    assert.throws(() => parseYouTubeUrl(null), (err) => err.status === 400);
+    assert.throws(() => parseYouTubeUrl(12345), (err) => err.status === 400);
   });
 });
 

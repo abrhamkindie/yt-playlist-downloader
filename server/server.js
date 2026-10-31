@@ -6,13 +6,16 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 
-const { PORT, CLIENT_ORIGINS, IS_HOSTED } = require('./lib/config');
+const { PORT, CLIENT_ORIGINS, IS_HOSTED, IS_ELECTRON } = require('./lib/config');
 const { ALL_FORMATS, QUALITIES, MAX_PLAYLIST_VIDEOS } = require('./lib/constants');
 const { HttpError } = require('./lib/errors');
 const { scrapePlaylist } = require('./services/scraper');
 const { downloadVideo } = require('./services/downloader');
 const downloadManager = require('./services/downloadManager');
 const { removeDir } = require('./lib/files');
+const { parseYouTubeUrl } = require('./lib/urls');
+const settingsStore = require('./lib/settings');
+const ytdlpUpdater = require('./services/ytdlpUpdater');
 const {
   HOSTED_DOWNLOAD_ROOT,
   resolveDownloadDir,
@@ -21,6 +24,8 @@ const {
 
 const app = express();
 const server = http.createServer(app);
+/** Port actually bound — may differ from PORT when the default is busy. */
+let boundPort = PORT;
 const io = socketIo(server, {
   cors: {
     origin: CLIENT_ORIGINS,
@@ -31,6 +36,10 @@ const io = socketIo(server, {
 
 app.set('trust proxy', 1);
 app.use(helmet({ contentSecurityPolicy: false })); // CSP off: client is served from same origin with Vite assets
+// A cookies.txt paste is far larger than a typical JSON body. This route gets
+// its own limit; body-parser marks the request parsed, so the global 100kb
+// parser below skips it instead of answering 413.
+app.use('/api/cookies', express.json({ limit: '2mb' }));
 app.use(express.json({ limit: '100kb' }));
 
 // Request logging
@@ -59,11 +68,10 @@ api.use(
 api.post('/analyze', async (req, res, next) => {
   try {
     const { url } = req.body || {};
-    if (!url || typeof url !== 'string') {
-      throw new HttpError(400, 'URL is required');
-    }
+    // Friendly 400 before yt-dlp is ever spawned (non-URLs, non-YouTube links).
+    const target = parseYouTubeUrl(url);
 
-    const videos = await scrapePlaylist(url.trim());
+    const videos = await scrapePlaylist(target);
     if (!videos || videos.length === 0) {
       throw new HttpError(404, 'No videos found');
     }
@@ -84,14 +92,8 @@ api.post('/download', async (req, res, next) => {
   try {
     let { url, format, quality, title, id, downloadPath, createSubfolder, playlistTitle } = req.body || {};
 
-    if (!url || typeof url !== 'string') {
-      throw new HttpError(400, 'Valid URL is required');
-    }
-    url = url.trim();
-    if (url.startsWith('/')) url = `https://www.youtube.com${url}`;
-    if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
-      throw new HttpError(400, 'Please provide a valid YouTube URL');
-    }
+    // Normalizes relative /watch?v=… paths and rejects non-YouTube URLs.
+    url = parseYouTubeUrl(url);
 
     format = format || 'mp4';
     quality = quality || 'best';
@@ -208,7 +210,7 @@ if (IS_HOSTED) {
       return res.status(403).json({ error: 'Forbidden' });
     }
     if (!fs.existsSync(resolved)) {
-      return res.status(410, ).json({ error: 'File no longer exists on the server' });
+      return res.status(410,).json({ error: 'File no longer exists on the server' });
     }
     res.download(resolved, path.basename(resolved));
   });
@@ -274,6 +276,101 @@ if (!IS_HOSTED) {
         if (error) console.error(`[open-folder] failed: ${error.message}`);
       });
       res.json({ message: 'Folder open requested' });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ---------------------------------------------------------------
+  // Desktop maintenance: yt-dlp freshness + YouTube authentication.
+  // These only make sense on the user's own machine — a hosted server
+  // must never accept cookies from a browser or touch anyone else's.
+  // ---------------------------------------------------------------
+  const authInfo = () => {
+    const cfg = settingsStore.resolveCookieConfig();
+    return {
+      method: cfg.method,
+      detail: cfg.detail,
+      browsers: settingsStore.BROWSER_SOURCES,
+      cookiesFromBrowser: cfg.method === 'browser' ? cfg.detail : '',
+      cookiesFile: cfg.method === 'file' ? cfg.detail : null,
+      // The stored preference even when a cookies.txt shadows it.
+      savedBrowserSource: settingsStore.readSettings().cookiesFromBrowser || '',
+    };
+  };
+
+  api.get('/desktop/info', (_req, res) => {
+    res.json({
+      dataDir: settingsStore.getDataDir(),
+      auth: authInfo(),
+      ytdlp: ytdlpUpdater.getStatus(),
+      queue: downloadManager.getSnapshot(),
+    });
+  });
+
+  // Use the signed-in session of a real browser — the strongest way to beat
+  // "Sign in to confirm you're not a bot" from a residential IP.
+  api.post('/settings/cookies-from-browser', (req, res) => {
+    const { browser } = req.body || {};
+    const shadowed = () => {
+      const cfg = authInfo();
+      return cfg.method === 'file' && cfg.detail
+        ? 'Saved as inactive: a cookies.txt file is taking priority. Remove it to use browser cookies.'
+        : null;
+    };
+
+    if (browser === null || browser === '' || browser === 'none') {
+      settingsStore.writeSettings({ cookiesFromBrowser: null });
+      return res.json({ auth: authInfo(), message: 'Browser cookie source cleared' });
+    }
+    const normalized = settingsStore.normalizeBrowserSource(browser);
+    if (!normalized) throw new HttpError(400, `Unsupported browser: ${String(browser).slice(0, 40)}`);
+
+    const profile = settingsStore.browserProfile(browser);
+    settingsStore.writeSettings({ cookiesFromBrowser: profile ? `${normalized}:${profile}` : normalized });
+    const warning = shadowed();
+    return res.json({
+      auth: authInfo(),
+      message: `Using cookies from ${normalized}`,
+      ...(warning ? { warning } : {}),
+    });
+  });
+
+  // Paste/export path: cookies.txt wins over the browser source and survives
+  // restarts. Stored in the writable per-user data dir, mode 0600.
+  api.post('/cookies', (req, res) => {
+    try {
+      const { content } = req.body || {};
+      const saved = settingsStore.saveCookies(typeof content === 'string' ? content : '');
+      res.json({ message: `Saved ${saved.count} cookies`, file: saved.path, auth: authInfo() });
+    } catch (err) {
+      if (err.code === 'INVALID_COOKIES') throw new HttpError(400, err.message);
+      throw err;
+    }
+  });
+
+  api.delete('/cookies', (_req, res) => {
+    const removed = settingsStore.clearCookies();
+    res.json({ message: removed.length ? 'Cookies removed' : 'No cookies file found', auth: authInfo() });
+  });
+
+  api.post('/ytdlp/check', async (req, res, next) => {
+    try {
+      res.json(await ytdlpUpdater.checkForUpdates({ force: req.body?.force !== false }));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  api.post('/ytdlp/update', async (req, res, next) => {
+    try {
+      const busy = downloadManager.getSnapshot().active.length > 0;
+      if (busy && req.body?.force !== true) {
+        throw new HttpError(409, 'Downloads are running — wait or cancel them before updating yt-dlp.');
+      }
+      const result = await ytdlpUpdater.updateNow();
+      io.emit('ytdlp-updated', result);
+      res.json({ ...result, ytdlp: ytdlpUpdater.getStatus() });
     } catch (error) {
       next(error);
     }
@@ -354,6 +451,8 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Cookies: write from env if provided (never commit the file itself).
+// Hosted deployments use env vars; desktop users get a writable per-user
+// cookies.txt / browser cookie source via the settings UI instead.
 const { COOKIES_PATH } = require('./lib/config');
 if (process.env.YOUTUBE_COOKIES_B64 || process.env.YOUTUBE_COOKIES) {
   try {
@@ -366,28 +465,79 @@ if (process.env.YOUTUBE_COOKIES_B64 || process.env.YOUTUBE_COOKIES) {
     console.error('Failed to write cookies from env:', err.message);
   }
 }
-if (fs.existsSync(COOKIES_PATH)) {
-  console.log('cookies.txt found at:', COOKIES_PATH);
+
+const authConfig = settingsStore.resolveCookieConfig();
+if (authConfig.method === 'file') {
+  console.log(`YouTube auth: cookies file ${authConfig.detail}`);
+} else if (authConfig.method === 'browser') {
+  console.log(`YouTube auth: --cookies-from-browser ${authConfig.detail}`);
 } else {
-  console.log('No cookies.txt found. YouTube bot detection may occur.');
+  console.log(
+    IS_HOSTED
+      ? 'No cookies provided. YouTube bot detection may occur.'
+      : 'No cookies configured. If YouTube complains about bots, enable browser cookies in Settings.',
+  );
 }
 
-// Start listening. Resolve a promise when ready (Electron waits on this).
-const ready = new Promise((resolve) => {
-  server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Hosted mode: ${IS_HOSTED}`);
-    resolve();
-  });
-}).catch?.(() => {});
+// Start listening and resolve with the bound port (Electron waits on this).
+// A desktop app must still open when 3000 is taken by a dev server or a second
+// instance, so locally we walk forward a few ports instead of dying silently.
+const MAX_PORT_ATTEMPTS = 5;
 
-server.on('error', (error) => {
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-    process.exit(1);
-  }
-  console.error('Server error:', error);
-  process.exit(1);
+const ready = new Promise((resolve, reject) => {
+  const attemptListen = (port, attempt) => {
+    const onError = (error) => {
+      server.removeListener('listening', onListening);
+      if (error.code === 'EADDRINUSE' && !IS_HOSTED && attempt < MAX_PORT_ATTEMPTS) {
+        console.warn(`Port ${port} is already in use — trying ${port + 1}`);
+        attemptListen(port + 1, attempt + 1);
+        return;
+      }
+      if (error.code === 'EADDRINUSE') console.error(`Port ${port} is already in use`);
+      else console.error('Server error:', error);
+      reject(error);
+    };
+    const onListening = () => {
+      server.removeListener('error', onError);
+      boundPort = port;
+      console.log(`Server running on port ${port}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'} | Hosted mode: ${IS_HOSTED}`);
+      resolve(port);
+    };
+
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port);
+  };
+
+  attemptListen(PORT, 0);
 });
 
-module.exports = { app, server, io, ready };
+// Outside Electron there is no window to show an error in — fail loudly.
+ready.catch(() => {
+  if (!IS_ELECTRON) process.exit(1);
+});
+
+// Keep yt-dlp fresh in the background on the desktop app. YouTube breaks
+// yt-dlp every few weeks, so an app frozen at build time would stop working;
+// this is throttled (6h) and every failure is non-fatal.
+if (!IS_HOSTED) {
+  ready.then(() => {
+    setTimeout(() => {
+      ytdlpUpdater
+        .autoUpdate({
+          emit: (event, payload) => io.emit(event, payload),
+          isBusy: () => downloadManager.getSnapshot().active.length > 0,
+        })
+        .catch((err) => console.error(`[ytdlp-updater] ${err.message}`));
+    }, 5_000).unref?.();
+  });
+}
+
+server.on('error', (error) => {
+  // Bind failures are handled (and retried) by the startup logic above.
+  if (error.code === 'EADDRINUSE') return;
+  console.error('Server error:', error);
+});
+
+module.exports = { app, server, io, ready, getPort: () => boundPort };
