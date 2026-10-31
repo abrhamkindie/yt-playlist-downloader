@@ -1,4 +1,6 @@
 import React from 'react';
+import { Download, FolderOpen, RefreshCw, OctagonX, Play, HardDriveDownload } from 'lucide-react';
+import { api } from '../lib/api';
 
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return null;
@@ -10,11 +12,26 @@ function formatDuration(seconds) {
     : `${m}:${String(s).padStart(2, '0')}`;
 }
 
-const DownloadIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-  </svg>
-);
+const STATUS_BADGE = {
+  ready: { label: 'Ready', className: 'bg-surface-muted text-ink-secondary' },
+  queued: { label: 'In queue', className: 'bg-brand-50 text-brand-700' },
+  downloading: null,
+  complete: { label: 'Complete', className: 'bg-success-50 text-success-700' },
+  error: { label: 'Failed', className: 'bg-danger-50 text-danger-700' },
+  cancelled: { label: 'Cancelled', className: 'bg-surface-muted text-ink-muted' },
+};
+
+const BTN_PRIMARY =
+  'inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 sm:flex-none';
+
+const BTN_SECONDARY =
+  'inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-line bg-surface px-5 py-2.5 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 sm:flex-none';
+
+const BTN_DANGER =
+  'inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-danger-200 bg-danger-50 px-5 py-2.5 text-sm font-bold text-danger-700 transition-all hover:-translate-y-0.5 hover:bg-danger-100 sm:flex-none';
+
+const BTN_RETRY =
+  'inline-flex flex-1 items-center justify-center gap-2 rounded-full border border-danger-200 bg-danger-50 px-5 py-2.5 text-sm font-bold text-danger-700 transition-all hover:-translate-y-0.5 hover:bg-danger-100 sm:flex-none';
 
 export default function VideoCard({
   video,
@@ -27,131 +44,128 @@ export default function VideoCard({
   hostedMode,
 }) {
   const status = state?.status || 'ready';
-  const isDownloading = status === 'downloading' || status === 'queued';
+  const isDownloading = status === 'downloading';
   const isComplete = status === 'complete';
   const isError = status === 'error';
   const duration = formatDuration(video.duration);
 
-  const statusColor = isComplete
-    ? 'text-green-600 font-semibold'
-    : isError
-      ? 'text-red-600 font-medium'
-      : isDownloading
-        ? 'text-primary-600 font-semibold'
-        : 'text-gray-500';
-
-  const statusIcon = isComplete ? '✓' : isError ? '⚠' : isDownloading ? '↓' : '';
+  const badge =
+    status === 'downloading'
+      ? { label: `${Math.round(state.progress || 0)}%`, className: 'bg-brand-50 text-brand-700' }
+      : STATUS_BADGE[status] || STATUS_BADGE.ready;
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col sm:flex-row gap-4 transition-all hover:shadow-md">
-      <div className="flex-shrink-0 relative group">
+    <div className="group flex flex-col gap-4 rounded-3xl border border-line bg-surface p-4 shadow-soft transition-all hover:shadow-card-hover sm:flex-row">
+      {/* Thumbnail */}
+      <div className="relative flex-shrink-0 overflow-hidden rounded-2xl">
         <img
           src={video.thumbnail}
           alt=""
           loading="lazy"
-          className="w-full sm:w-48 h-32 object-cover rounded-lg shadow-sm bg-gray-100"
+          className="h-44 w-full bg-surface-muted object-cover transition-transform duration-300 group-hover:scale-[1.03] sm:h-[112px] sm:w-[196px]"
         />
-        <div className="absolute top-2 left-2">
+        {/* Play overlay */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-ink/0 transition-colors group-hover:bg-ink/10">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-brand-600 opacity-0 shadow-soft transition-opacity group-hover:opacity-100">
+            <Play className="ml-0.5 h-4 w-4 fill-current" strokeWidth={0} />
+          </span>
+        </div>
+        {/* Checkbox */}
+        <label className="absolute left-2.5 top-2.5 flex h-7 w-7 cursor-pointer items-center justify-center rounded-xl bg-white/95 shadow-soft backdrop-blur transition-colors hover:bg-white">
           <input
             type="checkbox"
             checked={isSelected}
             onChange={(e) => onToggleSelect(video.id, e.target.checked)}
             aria-label={`Select ${video.title}`}
-            className="w-5 h-5 text-primary-600 rounded focus:ring-primary-500 focus:ring-2 border-gray-300 shadow-sm cursor-pointer"
+            className="h-4 w-4 cursor-pointer rounded border-line-strong text-brand-600 focus:ring-brand-500"
           />
-        </div>
+        </label>
+        {/* Duration */}
         {duration && (
-          <span className="absolute bottom-2 right-2 bg-black/75 text-white text-xs px-1.5 py-0.5 rounded">
+          <span className="absolute bottom-2.5 right-2.5 rounded-full bg-ink/75 px-2.5 py-1 text-[11px] font-bold tabular-nums text-white backdrop-blur">
             {duration}
           </span>
         )}
       </div>
 
-      <div className="flex-grow flex flex-col justify-between min-w-0">
+      {/* Body */}
+      <div className="flex min-w-0 flex-grow flex-col justify-between">
         <div>
-          <h3 className="text-base font-semibold text-gray-900 line-clamp-2 mb-1" title={video.title}>
-            {video.title}
-          </h3>
-          <p className={`text-sm flex items-center gap-1 ${statusColor}`} aria-live="polite">
-            {statusIcon && <span aria-hidden="true">{statusIcon}</span>}
-            {isComplete
-              ? 'Download Complete'
-              : isError
-                ? `Error: ${state.error || 'Unknown'}`
-                : isDownloading
-                  ? `Downloading: ${Math.round(state.progress || 0)}%${state.speed ? ` • ${state.speed}` : ''}${state.eta ? ` • ETA ${state.eta}` : ''}`
-                  : status === 'queued'
-                    ? 'Waiting in queue…'
-                    : status === 'cancelled'
-                      ? 'Cancelled'
-                      : 'Ready to download'}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <h3 className="line-clamp-2 text-[15px] font-bold text-ink transition-colors group-hover:text-brand-700" title={video.title}>
+              {video.title}
+            </h3>
+            <span
+              className={`flex-shrink-0 rounded-full px-3 py-1 text-[11px] font-bold tabular-nums ${badge.className}`}
+              aria-live="polite"
+            >
+              {badge.label}
+            </span>
+          </div>
+
+          {isDownloading && (
+            <p className="mt-1.5 flex items-center gap-2 text-xs font-semibold tabular-nums text-ink-secondary">
+              {state.speed && (
+                <span className="inline-flex items-center gap-1">
+                  <Download className="h-3 w-3 text-brand-600" strokeWidth={2.4} />
+                  {state.speed}
+                </span>
+              )}
+              {state.speed && state.eta && <span className="text-ink-muted">·</span>}
+              {state.eta && <span>ETA {state.eta}</span>}
+            </p>
+          )}
+          {isError && (
+            <p className="mt-1.5 line-clamp-2 text-xs font-semibold text-danger-700" title={state.error}>
+              {state.error || 'Something went wrong. Try again.'}
+            </p>
+          )}
         </div>
 
-        <div className="mt-3">
-          {(isDownloading || isComplete) && (
-            <div className="w-full bg-gray-100 rounded-full h-2 mb-3 overflow-hidden">
+        <div className="mt-4">
+          {(isDownloading || status === 'queued' || isComplete) && (
+            <div className="mb-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
               <div
-                className={`h-2 rounded-full transition-all duration-300 ${isComplete ? 'bg-green-500' : 'bg-primary-600'}`}
-                style={{ width: `${state.progress || 0}%` }}
+                className={`h-full rounded-full transition-all duration-300 ${isComplete ? 'bg-success-600' : 'bg-gradient-to-r from-brand-400 to-brand-600'}`}
+                style={{ width: `${isComplete ? 100 : (state.progress || 0)}%` }}
               />
             </div>
           )}
 
           <div className="flex flex-wrap gap-2">
             {isComplete && hostedMode ? (
-              <a
-                href={onOpenFolder(video.id)}
-                download
-                className="flex-1 sm:flex-none bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium py-2 px-4 rounded-lg border border-gray-300 transition-colors inline-flex items-center justify-center gap-2"
-              >
-                <DownloadIcon />
+              <a href={api.fileUrl(video.id)} download className={BTN_PRIMARY}>
+                <HardDriveDownload className="h-4 w-4" strokeWidth={2.2} />
                 Save to device
               </a>
             ) : isComplete ? (
-              <button
-                onClick={() => onOpenFolder(state.filePath)}
-                className="flex-1 sm:flex-none bg-gray-100 text-gray-700 hover:bg-gray-200 text-sm font-medium py-2 px-4 rounded-lg border border-gray-300 transition-colors inline-flex items-center justify-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                </svg>
-                Open Folder
+              <button onClick={() => onOpenFolder(state.filePath)} className={BTN_SECONDARY}>
+                <FolderOpen className="h-4 w-4" strokeWidth={2.2} />
+                Open folder
               </button>
             ) : (
               <button
                 onClick={() => onDownload(video)}
-                disabled={status === 'queued' || status === 'downloading'}
-                className={`flex-1 sm:flex-none text-sm font-medium py-2 px-4 rounded-lg transition-colors shadow-sm inline-flex items-center justify-center gap-2 ${
-                  status === 'error'
-                    ? 'bg-red-50 text-red-700 hover:bg-red-100 border border-red-200'
-                    : 'bg-primary-600 hover:bg-primary-700 text-white'
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                disabled={status === 'queued' || isDownloading}
+                className={isError ? BTN_RETRY : BTN_PRIMARY}
               >
-                {status === 'error' ? (
+                {isError ? (
                   <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
+                    <RefreshCw className="h-4 w-4" strokeWidth={2.2} />
                     Retry
                   </>
                 ) : (
                   <>
-                    <DownloadIcon />
-                    Download
+                    <Download className="h-4 w-4" strokeWidth={2.2} />
+                    {status === 'queued' ? 'Queued' : isDownloading ? 'Downloading' : 'Download'}
                   </>
                 )}
               </button>
             )}
 
-            {isDownloading && (
-              <button
-                onClick={() => onCancel(video)}
-                className="flex-1 sm:flex-none bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2 px-4 rounded-lg transition-colors border border-red-200 inline-flex items-center justify-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
+            {(isDownloading || status === 'queued') && (
+              <button onClick={() => onCancel(video)} className={BTN_DANGER}>
+                <OctagonX className="h-4 w-4" strokeWidth={2.2} />
                 Cancel
               </button>
             )}

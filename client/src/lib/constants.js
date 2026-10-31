@@ -20,3 +20,24 @@ export const QUALITIES = [
 ];
 
 export const MAX_PLAYLIST_VIDEOS = 500;
+
+/**
+ * True when the value parses as an http(s) YouTube URL.
+ * Mirrors the server-side check in server/lib/urls.js so obviously
+ * invalid input is rejected locally before any network call.
+ */
+export function isYouTubeUrl(value) {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === 'youtu.be' ||
+      host === 'youtube.com' ||
+      host.endsWith('.youtube.com') ||
+      host.endsWith('.youtube-nocookie.com')
+    );
+  } catch {
+    return false;
+  }
+}

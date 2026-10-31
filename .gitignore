@@ -15,9 +15,17 @@ downloads/
 cookies.txt
 **/cookies.txt
 
+# Per-user desktop state (settings.json, cookies, self-updated yt-dlp)
+# In dev this lives in server/.appdata; packaged builds use the OS user-data dir.
+.appdata/
+**/.appdata/
+
 # yt-dlp binaries — download at install time, don't commit
 yt-dlp
 yt-dlp.exe
+yt-dlp_linux
+yt-dlp_linux_aarch64
+yt-dlp_macos
 
 # Environment variables
 .env
@@ -36,7 +44,19 @@ Thumbs.db
 
 # Build outputs
 dist/
-build/
+# build/ holds electron-builder resources (icons) — track those, ignore output
+build/*
+!build/icon.png
+!build/icon.ico
+!build/icons/
+!build/icons/**
+!build/icns/
+!build/icns/**
+release/
+
+# Partial downloads / rollback copies from the yt-dlp self-updater
+*.download
+*.prev
 
 # Logs
 *.log

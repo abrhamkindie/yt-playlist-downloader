@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link as LinkIcon, ArrowRight, Loader2, FolderOpen, Compass, Zap, Layers } from 'lucide-react';
 
 export default function HeroSection({
   playlistUrl,
@@ -13,88 +14,141 @@ export default function HeroSection({
   hostedMode,
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-lg p-6 sm:p-10 mb-8 border border-gray-100">
-      <div className="text-center mb-8">
-        <h2 className="text-3xl font-bold text-gray-900 mb-2">Download Your Favorite Playlists</h2>
-        <p className="text-gray-500">
-          {hostedMode
-            ? 'Paste a YouTube playlist URL — finished files can be saved to your device.'
-            : 'Paste a YouTube playlist URL below to get started.'}
-        </p>
-      </div>
+    <section className="relative mb-10 overflow-hidden rounded-[32px] border border-line bg-surface px-5 py-10 shadow-panel sm:px-10 sm:py-14">
+      {/* Decorative layers: dot grid + soft blobs */}
+      <div className="dot-grid pointer-events-none absolute inset-0 opacity-60" aria-hidden="true" />
+      <div
+        className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-sky-100/80 blur-2xl"
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -bottom-20 -left-20 h-52 w-52 rounded-full bg-accent-100/70 blur-2xl"
+        aria-hidden="true"
+      />
 
-      <div className="flex flex-col gap-4 max-w-3xl mx-auto">
-        <div className="relative">
-          <input
-            type="text"
-            value={playlistUrl}
-            onChange={(e) => setPlaylistUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !isAnalyzing && onAnalyze()}
-            aria-label="YouTube playlist URL"
-            className="w-full pl-5 pr-36 py-4 rounded-full border border-gray-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-gray-700 placeholder-gray-400 shadow-sm"
-            placeholder="Paste YouTube Playlist URL here…"
-          />
+      <div className="relative mx-auto max-w-3xl text-center">
+        {/* Eyebrow badge */}
+        <span className="inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-4 py-1.5 text-xs font-bold tracking-wide text-brand-700 uppercase">
+          <Compass className="h-3.5 w-3.5" strokeWidth={2.4} />
+          Playlist downloader
+        </span>
+
+        {/* Headline */}
+        <h1 className="font-display mt-5 text-[34px] leading-[1.12] font-extrabold tracking-tight text-ink sm:text-[44px]">
+          Save entire playlists,
+          <br className="hidden sm:block" />{' '}
+          <span className="relative inline-block text-brand-600">
+            straight to your library
+            <svg
+              className="absolute -bottom-1.5 left-0 w-full text-accent-500"
+              viewBox="0 0 200 12"
+              fill="none"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path d="M3 9C40 3 90 2 127 5c26 2 48 3 70 1" stroke="currentColor" strokeWidth="5" strokeLinecap="round" />
+            </svg>
+          </span>
+        </h1>
+
+        <p className="mt-4 text-sm leading-relaxed text-ink-secondary sm:text-base">
+          {hostedMode
+            ? 'Paste a playlist link — finished files can be saved straight to your device.'
+            : 'Paste a playlist link to fetch the video list, then pick exactly what to download.'}
+        </p>
+
+        {/* Search pill */}
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="relative flex-grow">
+            <LinkIcon
+              className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-ink-muted"
+              strokeWidth={2}
+            />
+            <input
+              type="text"
+              value={playlistUrl}
+              onChange={(e) => setPlaylistUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !isAnalyzing && onAnalyze()}
+              aria-label="YouTube playlist URL"
+              className="ring-focus w-full rounded-full border border-line bg-surface py-4 pl-14 pr-5 text-sm font-medium text-ink shadow-soft transition-shadow placeholder:text-ink-muted"
+              placeholder="https://www.youtube.com/playlist?list=…"
+            />
+          </div>
           <button
             onClick={onAnalyze}
             disabled={isAnalyzing}
-            className="absolute right-2 top-2 bottom-2 bg-primary-600 hover:bg-primary-700 text-white font-medium px-6 rounded-full transition-colors shadow-md flex items-center gap-2 disabled:opacity-75 disabled:cursor-not-allowed"
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-brand-600 px-8 py-4 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
           >
             {isAnalyzing ? (
               <>
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.4} />
                 <span>Analyzing…</span>
               </>
             ) : (
               <>
                 <span>Analyze</span>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
+                <ArrowRight className="h-4 w-4" strokeWidth={2.4} />
               </>
             )}
           </button>
         </div>
 
         {!hostedMode && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative flex-grow">
+          <div className="mt-4 grid grid-cols-1 gap-3 text-left md:grid-cols-2">
+            <div className="relative">
+              <FolderOpen
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+                strokeWidth={2}
+              />
               <input
                 type="text"
                 value={downloadPath}
                 onChange={(e) => setDownloadPath(e.target.value)}
-                className="w-full pl-5 pr-32 py-3 rounded-full border border-gray-200 focus:border-primary-500 focus:ring-2 focus:ring-primary-200 outline-none transition-all text-sm text-gray-700 placeholder-gray-400 bg-gray-50"
-                placeholder="Custom Download Path (Optional)"
+                aria-label="Download path"
+                className="ring-focus w-full rounded-full border border-line bg-surface py-3 pl-11 pr-24 text-sm font-medium text-ink shadow-soft transition-shadow placeholder:text-ink-muted"
+                placeholder="Download folder (optional)"
               />
               <button
                 onClick={onPickDirectory}
-                className="absolute right-1.5 top-1.5 bottom-1.5 bg-white hover:bg-gray-50 text-gray-700 text-xs font-medium px-4 rounded-full border border-gray-200 transition-colors shadow-sm"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-surface-muted px-4 py-1.5 text-xs font-bold text-ink-secondary transition-colors hover:bg-line"
               >
                 Browse…
               </button>
             </div>
 
-            <div className="flex items-center justify-center md:justify-start px-4 py-3 bg-gray-50 rounded-full border border-gray-200">
-              <label className="flex items-center cursor-pointer select-none">
-                <div className="relative">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    checked={createSubfolder}
-                    onChange={(e) => setCreateSubfolder(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-10 h-6 rounded-full shadow-inner transition-colors bg-gray-200 peer-checked:bg-primary-600 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-400 peer-focus-visible:ring-offset-2" />
-                  <div className="absolute w-4 h-4 bg-white rounded-full shadow left-1 top-1 transition-transform peer-checked:translate-x-4" />
-                </div>
-                <span className="ml-3 text-sm font-medium text-gray-700">Create Subfolder</span>
-              </label>
-            </div>
+            <label className="flex cursor-pointer select-none items-center justify-between gap-3 rounded-full border border-line bg-surface px-5 py-3 shadow-soft">
+              <span className="text-sm font-semibold text-ink-secondary">Subfolder per playlist</span>
+              <div className="relative">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={createSubfolder}
+                  onChange={(e) => setCreateSubfolder(e.target.checked)}
+                  className="peer sr-only"
+                />
+                <div className="h-6 w-11 rounded-full bg-line-strong transition-colors peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500/35" />
+                <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+              </div>
+            </label>
           </div>
         )}
+
+        {/* Trust chips */}
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5">
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-4 py-2 text-xs font-semibold text-ink-secondary">
+            <Zap className="h-3.5 w-3.5 text-accent-600" strokeWidth={2.4} />
+            Up to 4K &amp; MP3
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-4 py-2 text-xs font-semibold text-ink-secondary">
+            <Layers className="h-3.5 w-3.5 text-brand-600" strokeWidth={2.4} />
+            Batch downloads
+          </span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-4 py-2 text-xs font-semibold text-ink-secondary">
+            <Compass className="h-3.5 w-3.5 text-success-600" strokeWidth={2.4} />
+            Live progress
+          </span>
+        </div>
       </div>
-    </div>
+    </section>
   );
 }
