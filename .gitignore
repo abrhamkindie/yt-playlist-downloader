@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-package-lock.json
+# Lockfiles are tracked for CI reproducibility
 
 # Downloads
 downloads/
