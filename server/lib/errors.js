@@ -4,7 +4,14 @@
  */
 
 const RULES = [
-  { test: /sign in to confirm|confirm you'?re not a bot|cookies/i, message: 'YouTube bot detection: update yt-dlp or provide fresh cookies.' },
+  { test: /is not a valid url|unsupported url|invalid url/i, message: "That doesn't look like a valid YouTube URL. Paste a full link, e.g. https://www.youtube.com/playlist?list=…" },
+  // Cookie-source problems first — they mention "cookies" too, but the fix is different.
+  {
+    test: /could not find .*(cooki|browser)|failed to open (cooki|browser)|no such browser|unsupported browser|unable to extract cookies|permission denied.*cooki|could not decrypt|cookie store|keyring/i,
+    message: 'Cookie source failed — pick a different browser in Settings, or export cookies.txt from a logged-in tab.',
+  },
+  { test: /sign in to confirm|confirm you'?re not a bot/i, message: 'YouTube bot detection — open Settings, enable browser cookies (or paste a cookies.txt), then update yt-dlp.' },
+  { test: /cookies/i, message: 'YouTube wants a signed-in session: enable browser cookies or paste a cookies.txt in Settings.' },
   { test: /HTTP Error 403|Forbidden/i, message: 'Access denied — the video may be restricted.' },
   { test: /HTTP Error 404|not found/i, message: 'Video or playlist not found — check the URL.' },
   { test: /private video|video is private/i, message: 'This video is private.' },
