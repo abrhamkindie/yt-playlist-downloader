@@ -8,8 +8,10 @@ const ffmpegPath = require('ffmpeg-static');
 /**
  * Build the yt-dlp argument list for a video/audio download.
  * Exported for testing.
+ * @param {object} opts
+ * @param {boolean} [opts.fallback] - Use simplest format selector (for retry)
  */
-function buildArgs({ url, format, quality, filePath }) {
+function buildArgs({ url, format, quality, filePath, fallback = false }) {
   const isAudio = FORMATS.audio.includes(format);
   const args = [
     '--newline',
@@ -19,22 +21,18 @@ function buildArgs({ url, format, quality, filePath }) {
     '--socket-timeout', '30',
     '--http-chunk-size', '10M',
     '--ffmpeg-location', ffmpegPath,
-    // Concurrent fragment downloads — YouTube DASH streams are fragmented,
-    // and without -N yt-dlp fetches them sequentially. This is the single
-    // biggest speed factor (old code had it; keep it).
     '-N', '4',
-    // NOTE: no player_client override — recent yt-dlp default clients are
-    // better tuned than the legacy android workaround (which can 403 or
-    // miss formats on current binaries).
   ];
 
   if (isAudio) {
     args.push('-x', '--audio-format', format, '--audio-quality', '0');
+  } else if (fallback) {
+    // Retry mode: pick the best single file, no merging, no container constraint.
+    // This handles videos that only expose one combined stream or where
+    // --merge-output-format restricts selection.
+    args.push('-f', 'b');
   } else {
     const heightFilter = HEIGHT_FILTERS[quality] || '';
-    // Use bestvideo* (includes combined a+v streams) for maximum compatibility.
-    // Some videos don't expose separate video-only/audio-only streams.
-    // Final /best is a last-resort fallback to any single-file format.
     const formatSelector = heightFilter
       ? `bestvideo*${heightFilter}+bestaudio/best${heightFilter}/best`
       : 'bestvideo*+bestaudio/best';
@@ -62,11 +60,12 @@ function parseProgressLine(line) {
 }
 
 /**
- * Download a single video.
- * @returns {ChildProcess} the spawned yt-dlp process
+ * Download a single video. Retries with a simpler format selector if the
+ * first attempt fails with "format not available" (common for videos that
+ * only expose combined streams or where merge constraints block selection).
  */
 function downloadVideo({ url, title, outputDir, format = 'mp4', quality = 'best', videoId, io, onComplete, onError }) {
-  const isAudio = FORMATS.audio.includes(format);
+  const FORMAT_NOT_AVAILABLE = /requested format is not available|no formats/i;
 
   try {
     if (!url || typeof url !== 'string') throw new Error('Invalid URL');
@@ -74,67 +73,78 @@ function downloadVideo({ url, title, outputDir, format = 'mp4', quality = 'best'
 
     ensureDir(outputDir);
     const safeTitle = sanitizeFilename(title);
-    // Pre-allocate a non-colliding target path (avoids overwriting).
     const filePath = uniqueFilePath(outputDir, `${safeTitle}.${format}`);
 
     console.log(`[Downloader] "${title}" -> ${filePath} [${format}, ${quality}]`);
-    const args = buildArgs({ url, format, quality, filePath });
-    const process_ = spawnYtDlp(args);
 
-    let lastPercent = -1;
-    let stderrOutput = '';
+    let attempted = false; // track if we already retried
 
-    process_.stdout.on('data', (chunk) => {
-      for (const line of chunk.toString().split('\n')) {
-        const info = parseProgressLine(line);
-        if (!info) continue;
+    function spawnAttempt(fallback) {
+      const args = buildArgs({ url, format, quality, filePath, fallback });
+      const proc = spawnYtDlp(args);
+      let lastPercent = -1;
+      let stderrOutput = '';
 
-        // yt-dlp reports video then audio phases; a big drop in percent
-        // means a new phase (merge) started — emit immediately so the UI
-        // can reset its bar instead of jumping backwards.
-        const isNewPhase = lastPercent > 20 && info.percent < lastPercent - 5;
-        if (isNewPhase || Math.abs(info.percent - lastPercent) >= 1 || info.percent === 100) {
-          lastPercent = info.percent;
-          ioSafeEmit(io, 'download-progress', {
-            id: videoId,
-            url,
-            progress: Math.min(info.percent, 100),
-            status: 'downloading',
-            phase: isNewPhase ? 'merge' : 'download',
-            speed: info.speed,
-            eta: info.eta,
-          });
+      proc.stdout.on('data', (chunk) => {
+        for (const line of chunk.toString().split('\n')) {
+          const info = parseProgressLine(line);
+          if (!info) continue;
+          const isNewPhase = lastPercent > 20 && info.percent < lastPercent - 5;
+          if (isNewPhase || Math.abs(info.percent - lastPercent) >= 1 || info.percent === 100) {
+            lastPercent = info.percent;
+            ioSafeEmit(io, 'download-progress', {
+              id: videoId,
+              url,
+              progress: Math.min(info.percent, 100),
+              status: 'downloading',
+              phase: isNewPhase ? 'merge' : 'download',
+              speed: info.speed,
+              eta: info.eta,
+            });
+          }
         }
-      }
-    });
+      });
 
-    process_.stderr.on('data', (chunk) => {
-      stderrOutput += chunk.toString();
-    });
+      proc.stderr.on('data', (chunk) => {
+        stderrOutput += chunk.toString();
+      });
 
-    process_.on('close', (code) => {
-      if (code === 0) {
-        ioSafeEmit(io, 'download-complete', { id: videoId, url, filePath });
-        if (onComplete) onComplete(filePath);
-      } else if (code !== null) {
-        // code null = killed (cancelled); handled elsewhere
+      proc.on('close', (code) => {
+        if (code === 0) {
+          ioSafeEmit(io, 'download-complete', { id: videoId, url, filePath });
+          if (onComplete) onComplete(filePath);
+          return;
+        }
+        // code null = killed (cancelled)
+        if (code === null) return;
+
+        // Retry with simpler format if "format not available" and we haven't tried yet
+        if (!fallback && !attempted && FORMAT_NOT_AVAILABLE.test(stderrOutput)) {
+          console.log(`[Downloader] Format unavailable, retrying with best single file: ${title}`);
+          attempted = true;
+          spawnAttempt(true);
+          return;
+        }
+
         const message = friendlyYtdlpError(stderrOutput);
         console.error(`[Downloader] Failed (${code}): ${title} — ${message}`);
         ioSafeEmit(io, 'download-error', { id: videoId, url, error: message });
         if (onError) onError(new Error(message));
-      }
-    });
+      });
 
-    process_.on('error', (err) => {
-      const message = err.code === 'ENOENT'
-        ? 'yt-dlp not found on the server. Please install it.'
-        : 'Failed to start download';
-      console.error(`[Downloader] spawn error: ${err.message}`);
-      ioSafeEmit(io, 'download-error', { id: videoId, url, error: message });
-      if (onError) onError(new Error(message));
-    });
+      proc.on('error', (err) => {
+        const message = err.code === 'ENOENT'
+          ? 'yt-dlp not found on the server. Please install it.'
+          : 'Failed to start download';
+        console.error(`[Downloader] spawn error: ${err.message}`);
+        ioSafeEmit(io, 'download-error', { id: videoId, url, error: message });
+        if (onError) onError(new Error(message));
+      });
 
-    return process_;
+      return proc;
+    }
+
+    return spawnAttempt(false);
   } catch (error) {
     console.error(`[Downloader] ${error.message}`);
     ioSafeEmit(io, 'download-error', { id: videoId, url, error: error.message });
