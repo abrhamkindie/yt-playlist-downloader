@@ -16,6 +16,7 @@ const { removeDir } = require('./lib/files');
 const { parseYouTubeUrl } = require('./lib/urls');
 const settingsStore = require('./lib/settings');
 const ytdlpUpdater = require('./services/ytdlpUpdater');
+const appUpdater = require('./services/appUpdater');
 const {
   HOSTED_DOWNLOAD_ROOT,
   resolveDownloadDir,
@@ -304,6 +305,7 @@ if (!IS_HOSTED) {
       dataDir: settingsStore.getDataDir(),
       auth: authInfo(),
       ytdlp: ytdlpUpdater.getStatus(),
+      app: appUpdater.getStatus(),
       queue: downloadManager.getSnapshot(),
     });
   });
@@ -371,6 +373,17 @@ if (!IS_HOSTED) {
       const result = await ytdlpUpdater.updateNow();
       io.emit('ytdlp-updated', result);
       res.json({ ...result, ytdlp: ytdlpUpdater.getStatus() });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // App self-update: compare the running build against the newest GitHub
+  // Release. We never auto-install an unsigned Electron app — the UI opens the
+  // official release page so the user installs the correct installer.
+  api.post('/app/check', async (req, res, next) => {
+    try {
+      res.json(await appUpdater.checkForUpdates({ force: req.body?.force !== false }));
     } catch (error) {
       next(error);
     }
@@ -531,6 +544,12 @@ if (!IS_HOSTED) {
         })
         .catch((err) => console.error(`[ytdlp-updater] ${err.message}`));
     }, 5_000).unref?.();
+
+    // Also check for a newer app release (throttled, non-fatal) so the Desktop
+    // settings can surface "Update available" without the user opening it first.
+    setTimeout(() => {
+      appUpdater.checkForUpdates().catch((err) => console.error(`[app-updater] ${err.message}`));
+    }, 8_000).unref?.();
   });
 }
 

@@ -12,6 +12,7 @@ const path = require('path');
 
 const settings = require('../lib/settings');
 const updater = require('../services/ytdlpUpdater');
+const appUpdater = require('../services/appUpdater');
 const { friendlyYtdlpError } = require('../lib/errors');
 
 let dataDir;
@@ -26,6 +27,7 @@ beforeEach(() => {
 afterEach(() => {
     if (prevDataDirEnv === undefined) delete process.env.STREAMPULL_DATA_DIR;
     else process.env.STREAMPULL_DATA_DIR = prevDataDirEnv;
+    delete process.env.APP_VERSION;
     fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
@@ -201,6 +203,58 @@ describe('ytdlpUpdater.getStatus update flags', () => {
         const status = updater.getStatus();
         assert.strictEqual(status.updateAvailable, false);
         assert.strictEqual(status.latest, null);
+    });
+});
+
+describe('appUpdater.compareVersions', () => {
+    test('treats a leading v and short forms as equal', () => {
+        assert.strictEqual(appUpdater.compareVersions('v1.2.1', '1.2.1'), 0);
+        assert.strictEqual(appUpdater.compareVersions('1.2', '1.2.0'), 0);
+    });
+
+    test('orders semver numerically, not lexically', () => {
+        assert.strictEqual(appUpdater.compareVersions('1.10.0', '1.9.9'), 1);
+        assert.strictEqual(appUpdater.compareVersions('1.2.0', '1.2.1'), -1);
+        assert.strictEqual(appUpdater.compareVersions('', '1.0.0'), -1);
+    });
+
+    test('ignores pre-release/build suffixes', () => {
+        assert.strictEqual(appUpdater.compareVersions('1.2.1-rc1', '1.2.1'), 0);
+        assert.strictEqual(appUpdater.compareVersions('1.2.1+build7', '1.2.0'), 1);
+    });
+});
+
+describe('appUpdater.getStatus update flags', () => {
+    test('a newer published release reports an available update', () => {
+        process.env.APP_VERSION = '1.2.1';
+        settings.writeSettings({ app: { latestVersion: '1.3.0' } });
+        const status = appUpdater.getStatus();
+        assert.strictEqual(status.currentVersion, '1.2.1');
+        assert.strictEqual(status.updateAvailable, true);
+        assert.strictEqual(status.upToDate, false);
+    });
+
+    test('the running build being newest reports up to date', () => {
+        process.env.APP_VERSION = '1.3.0';
+        settings.writeSettings({ app: { latestVersion: '1.3.0' } });
+        const status = appUpdater.getStatus();
+        assert.strictEqual(status.updateAvailable, false);
+        assert.strictEqual(status.upToDate, true);
+    });
+
+    test('nothing is promised before the first successful check', () => {
+        process.env.APP_VERSION = '1.2.1';
+        settings.writeSettings({ app: {} });
+        const status = appUpdater.getStatus();
+        assert.strictEqual(status.updateAvailable, false);
+        assert.strictEqual(status.upToDate, false);
+        assert.strictEqual(status.latestVersion, null);
+    });
+
+    test('falls back to the public releases page for the download link', () => {
+        process.env.APP_VERSION = '1.0.0';
+        settings.writeSettings({ app: { latestVersion: '9.9.9' } });
+        assert.match(appUpdater.getStatus().releaseUrl, /github\.com\/.+\/releases\/latest$/);
     });
 });
 

@@ -1,6 +1,14 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+// Expose the packaged app version to the embedded server so the Desktop
+// settings can compare it against the latest GitHub Release (app self-update).
+try {
+  process.env.APP_VERSION = app.getVersion();
+} catch {
+  /* ignore */
+}
 
 // Start the Express server; it exports a `ready` promise.
 const { ready } = require('./server');
@@ -29,6 +37,15 @@ function createWindow() {
   });
 
   win.removeMenu();
+
+  // Open external links (GitHub releases, help pages) in the user's real
+  // browser instead of navigating the app window away from the UI.
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      shell.openExternal(url).catch(() => {});
+    }
+    return { action: 'deny' };
+  });
 
   // The embedded server resolves with the port it actually bound — 3000 may be
   // taken by a dev server or a second app instance.

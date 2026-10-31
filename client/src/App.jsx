@@ -310,7 +310,7 @@ function App() {
       <Header
         desktopMode={isDesktop}
         hostedMode={isHosted}
-        updateAvailable={Boolean(desktopInfo?.ytdlp?.updateAvailable)}
+        updateAvailable={Boolean(desktopInfo?.ytdlp?.updateAvailable || desktopInfo?.app?.updateAvailable)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
 
