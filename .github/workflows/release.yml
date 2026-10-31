@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Prevent multiple concurrent releases for the same tag
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build desktop binaries on each platform
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            builder_flag: '--linux'
+          - os: windows-latest
+            platform: windows
+            builder_flag: '--win'
+          - os: macos-latest
+            platform: macos
+            builder_flag: '--mac'
+
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            client/package-lock.json
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Install server dependencies
+        run: npm install
+        working-directory: server
+
+      - name: Install client dependencies
+        run: npm install
+        working-directory: client
+
+      - name: Build client (Vite)
+        run: npm run build:client
+
+      - name: Download yt-dlp binary
+        run: npm run download-ytdlp
+
+      - name: Package with electron-builder
+        run: npx electron-builder ${{ matrix.builder_flag }} --publish never
+        env:
+          # Skip code signing for unsigned builds
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Windows: skip signing
+          WIN_CSC_LINK: ''
+          WIN_CSC_KEY_PASSWORD: ''
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          # electron-builder outputs to release/<version>/
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p dist-artifacts
+          find release/${VERSION} -maxdepth 1 -type f \( \
+            -name '*.AppImage' -o \
+            -name '*.deb' -o \
+            -name '*.exe' -o \
+            -name '*.dmg' -o \
+            -name '*.zip' -o \
+            -name 'latest*.yml' \
+          \) -exec cp {} dist-artifacts/ \;
+          echo "=== Artifacts ==="
+          ls -lh dist-artifacts/
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: streampull-${{ matrix.platform }}
+          path: dist-artifacts/
+          retention-days: 7
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Merge all platform artifacts into a single GitHub Release
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+          merge-multiple: true
+
+      - name: List files
+        run: ls -lhR all-artifacts/
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: StreamPull ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            all-artifacts/*.AppImage
+            all-artifacts/*.deb
+            all-artifacts/*.exe
+            all-artifacts/*.dmg

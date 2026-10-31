@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 const REPO = import.meta.env.VITE_GITHUB_REPO || 'abrhamkindie/yt-playlist-downloader';
-const VERSION = import.meta.env.VITE_APP_VERSION || '1.1.0';
+const VERSION = import.meta.env.VITE_APP_VERSION || '1.2.0';
 
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const LATEST_URL = `https://github.com/${REPO}/releases/latest`;
