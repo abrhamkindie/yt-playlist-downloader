@@ -44,7 +44,7 @@ Thumbs.db
 
 # Build outputs
 dist/
-# build/ holds electron-builder resources (icons) — track those, ignore output
+# build/ holds electron-builder resources (icons, scripts) — track those, ignore output
 build/*
 !build/icon.png
 !build/icon.ico
@@ -52,6 +52,8 @@ build/*
 !build/icons/**
 !build/icns/
 !build/icns/**
+!build/linux/
+!build/linux/**
 release/
 
 # Partial downloads / rollback copies from the yt-dlp self-updater

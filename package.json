@@ -68,7 +68,8 @@
             "artifactName": "${productName}-${version}-${arch}.AppImage"
         },
         "deb": {
-            "artifactName": "${productName}-${version}-${arch}.deb"
+            "artifactName": "${productName}-${version}-${arch}.deb",
+            "afterInstall": "build/linux/postinst.sh"
         },
         "win": {
             "target": [

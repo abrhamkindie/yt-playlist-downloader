@@ -38,11 +38,11 @@ const OS_TABS = [
         id: 'macos',
         label: 'macOS',
         icon: <Apple className="h-4 w-4" strokeWidth={2.2} />,
-        note: 'Apple Silicon & Intel',
+        note: 'Apple Silicon (M1–M4)',
         assets: [
             {
                 label: 'Disk Image (.dmg)',
-                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-${VERSION}.dmg`,
+                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-${VERSION}-arm64.dmg`,
                 primary: true,
                 size: '~110 MB',
             },
@@ -156,8 +156,8 @@ export default function DesktopDownloadSection() {
                             onClick={() => setActive(t.id)}
                             aria-pressed={active === t.id}
                             className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all ${active === t.id
-                                    ? 'bg-brand-600 text-white shadow-brand'
-                                    : 'text-ink-secondary hover:text-ink'
+                                ? 'bg-brand-600 text-white shadow-brand'
+                                : 'text-ink-secondary hover:text-ink'
                                 }`}
                         >
                             {t.icon}
