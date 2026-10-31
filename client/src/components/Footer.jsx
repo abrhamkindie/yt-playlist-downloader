@@ -1,7 +1,7 @@
 import React from 'react';
-import { Heart, Compass } from 'lucide-react';
+import { Heart, Compass, Download } from 'lucide-react';
 
-export default function Footer() {
+export default function Footer({ hostedMode = false }) {
   const year = new Date().getFullYear();
   return (
     <footer className="mt-20 border-t border-line/70 bg-surface">
@@ -19,11 +19,22 @@ export default function Footer() {
           </p>
         </div>
 
-        <p className="inline-flex items-center gap-1.5 text-xs text-ink-secondary">
-          Made with
-          <Heart className="h-3.5 w-3.5 fill-accent-500 text-accent-500" strokeWidth={2.4} />
-          for creators. Respect copyright &amp; YouTube&rsquo;s ToS.
-        </p>
+        <div className="flex flex-wrap items-center justify-center gap-4">
+          {hostedMode && (
+            <a
+              href="#desktop"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 underline-offset-4 transition-colors hover:text-brand-800 hover:underline"
+            >
+              <Download className="h-3.5 w-3.5" strokeWidth={2.4} />
+              Get the Desktop App
+            </a>
+          )}
+          <p className="inline-flex items-center gap-1.5 text-xs text-ink-secondary">
+            Made with
+            <Heart className="h-3.5 w-3.5 fill-accent-500 text-accent-500" strokeWidth={2.4} />
+            for creators.
+          </p>
+        </div>
       </div>
     </footer>
   );

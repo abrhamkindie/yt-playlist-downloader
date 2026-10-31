@@ -6,6 +6,7 @@ import VideoList from './components/VideoList';
 import StatusBanner from './components/StatusBanner';
 import SummaryBar from './components/SummaryBar';
 import SettingsPanel from './components/SettingsPanel';
+import DesktopDownloadSection from './components/DesktopDownloadSection';
 import { useDownloadSocket } from './hooks/useDownloadSocket';
 import { api } from './lib/api';
 import { MAX_PLAYLIST_VIDEOS, isYouTubeUrl } from './lib/constants';
@@ -43,7 +44,12 @@ function App() {
     api
       .status()
       .then((data) => setHostedMode(Boolean(data.hosted)))
-      .catch(() => setHostedMode(false));
+      .catch(() => {
+        // If /api/status fails, the backend is unreachable.
+        // The desktop app always has a local server, so a failure here
+        // almost certainly means we're on the hosted site with a cold/slow
+        // backend. Leave hostedMode as null → treated as hosted (safe).
+      });
   }, []);
 
   const refreshDesktop = useCallback(() => {
@@ -52,6 +58,7 @@ function App() {
       .then(setDesktopInfo)
       .catch(() => setDesktopInfo(null)); // hosted build, or server too old
   }, []);
+
 
   useEffect(() => {
     // Probe desktop capabilities only after we know we are NOT hosted.
@@ -290,6 +297,7 @@ function App() {
     <div className="flex min-h-screen flex-col bg-canvas font-sans text-ink">
       <Header
         desktopMode={isDesktop}
+        hostedMode={isHosted}
         updateAvailable={Boolean(desktopInfo?.ytdlp?.updateAvailable)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -341,9 +349,12 @@ function App() {
           onCancelAll={handleCancelAll}
           activeDownloadsCount={activeDownloads.size}
         />
+
+        {/* On the hosted site, promote the desktop app; in the desktop app itself, hide it. */}
+        {isHosted && <DesktopDownloadSection />}
       </main>
 
-      <Footer />
+      <Footer hostedMode={isHosted} />
 
       {isDesktop && (
         <SettingsPanel
