@@ -1,7 +1,7 @@
 {
     "name": "streampull",
     "productName": "StreamPull",
-    "version": "1.1.0",
+    "version": "1.2.1",
     "private": true,
     "description": "Desktop YouTube playlist downloader (yt-dlp + ffmpeg, runs on your own machine/IP).",
     "author": "StreamPull",
@@ -65,10 +65,11 @@
             "maintainer": "StreamPull"
         },
         "appImage": {
-            "artifactName": "${productName}-${version}-${arch}.AppImage"
+            "artifactName": "${productName}-${arch}.AppImage"
         },
         "deb": {
-            "artifactName": "${productName}-${version}-${arch}.deb"
+            "artifactName": "${productName}-${arch}.deb",
+            "afterInstall": "build/linux/postinst.sh"
         },
         "win": {
             "target": [
@@ -78,13 +79,14 @@
         "nsis": {
             "oneClick": false,
             "allowToChangeInstallationDirectory": true,
-            "artifactName": "${productName}-Setup-${version}.${ext}"
+            "artifactName": "${productName}-Setup.${ext}"
         },
         "mac": {
             "target": [
                 "dmg"
             ],
-            "category": "public.app-category.utilities"
+            "category": "public.app-category.utilities",
+            "artifactName": "${productName}-${arch}.${ext}"
         }
     }
 }

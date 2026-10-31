@@ -139,7 +139,7 @@ describe('buildArgs', () => {
   test('video: includes format selector and merge format', () => {
     const args = buildArgs({ url: 'https://youtu.be/x', format: 'mp4', quality: '720p', filePath: '/tmp/v.mp4' });
     const fIdx = args.indexOf('-f');
-    assert.strictEqual(args[fIdx + 1], 'bestvideo[height<=720]+bestaudio/best[height<=720]');
+    assert.strictEqual(args[fIdx + 1], 'bestvideo*[height<=720]+bestaudio/best[height<=720]/best');
     assert.ok(args.includes('--merge-output-format'));
     assert.ok(!args.includes('-x'));
   });
@@ -152,7 +152,7 @@ describe('buildArgs', () => {
 
   test('best quality has no height filter', () => {
     const args = buildArgs({ url: 'u', format: 'mp4', quality: 'best', filePath: '/t.mp4' });
-    assert.strictEqual(args[args.indexOf('-f') + 1], 'bestvideo+bestaudio/best');
+    assert.strictEqual(args[args.indexOf('-f') + 1], 'bestvideo*+bestaudio/best');
   });
 });
 

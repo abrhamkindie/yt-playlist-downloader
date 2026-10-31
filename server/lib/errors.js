@@ -13,6 +13,7 @@ const RULES = [
   { test: /sign in to confirm|confirm you'?re not a bot/i, message: 'YouTube bot detection — open Settings, enable browser cookies (or paste a cookies.txt), then update yt-dlp.' },
   { test: /cookies/i, message: 'YouTube wants a signed-in session: enable browser cookies or paste a cookies.txt in Settings.' },
   { test: /HTTP Error 403|Forbidden/i, message: 'Access denied — the video may be restricted.' },
+  { test: /requested format is not available|no formats/i, message: 'No compatible format found for this video — try a different quality or format (e.g. Best Available + MKV).' },
   { test: /HTTP Error 404|not found/i, message: 'Video or playlist not found — check the URL.' },
   { test: /private video|video is private/i, message: 'This video is private.' },
   { test: /video unavailable|members-only|age.?restrict/i, message: 'This video is unavailable or restricted.' },
