@@ -32,7 +32,12 @@ function buildArgs({ url, format, quality, filePath }) {
     args.push('-x', '--audio-format', format, '--audio-quality', '0');
   } else {
     const heightFilter = HEIGHT_FILTERS[quality] || '';
-    const formatSelector = `bestvideo${heightFilter}+bestaudio/best${heightFilter}`;
+    // Use bestvideo* (includes combined a+v streams) for maximum compatibility.
+    // Some videos don't expose separate video-only/audio-only streams.
+    // Final /best is a last-resort fallback to any single-file format.
+    const formatSelector = heightFilter
+      ? `bestvideo*${heightFilter}+bestaudio/best${heightFilter}/best`
+      : 'bestvideo*+bestaudio/best';
     args.push('-f', formatSelector, '--merge-output-format', format);
   }
 

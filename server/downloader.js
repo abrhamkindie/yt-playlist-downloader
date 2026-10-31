@@ -115,10 +115,9 @@ function downloadVideo(url, title, customPath, format, quality, options, io, onC
             default: heightFilter = ''; // 'best'
         }
 
-        // Priority: Requested resolution -> Best video & audio -> Best single file
-        // We rely on --merge-output-format to handle the container (mp4/mkv/etc)
-        // This allows downloading VP9/AV1 video (better quality) and converting to MP4
-        const formatSelector = `bestvideo${heightFilter}+bestaudio/best${heightFilter}`;
+        // Priority: Best video*+audio -> Best with height filter -> Best any
+        // bestvideo* includes combined a+v streams for maximum compatibility
+        const formatSelector = `bestvideo*${heightFilter}+bestaudio/best${heightFilter}/best`;
         
         console.log(`[Downloader] Quality: ${quality}, Height Filter: ${heightFilter}`);
         console.log(`[Downloader] Format Selector: ${formatSelector}`);
