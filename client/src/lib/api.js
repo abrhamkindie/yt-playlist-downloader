@@ -39,6 +39,24 @@ export const api = {
   openFolder: (filePath) =>
     request('/api/open-folder', { method: 'POST', body: JSON.stringify({ filePath }) }),
 
+  // --- Desktop-only (absent / rejected on a hosted server) ---
+  desktopInfo: () => request('/api/desktop/info'),
+
+  setCookiesFromBrowser: (browser) =>
+    request('/api/settings/cookies-from-browser', {
+      method: 'POST',
+      body: JSON.stringify({ browser }),
+    }),
+
+  saveCookies: (content) =>
+    request('/api/cookies', { method: 'POST', body: JSON.stringify({ content }) }),
+
+  clearCookies: () => request('/api/cookies', { method: 'DELETE' }),
+
+  checkYtdlp: () => request('/api/ytdlp/check', { method: 'POST', body: JSON.stringify({ force: true }) }),
+
+  updateYtdlp: () => request('/api/ytdlp/update', { method: 'POST', body: JSON.stringify({ force: true }) }),
+
   /** Hosted mode only — direct file URL for "save to device". */
   fileUrl: (id) => `${API_BASE_URL}/api/files/${encodeURIComponent(id)}`,
 

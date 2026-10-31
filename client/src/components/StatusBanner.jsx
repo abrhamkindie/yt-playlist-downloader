@@ -1,29 +1,18 @@
 import React from 'react';
+import { CircleCheck, CircleX, Loader2, Info, X } from 'lucide-react';
 
 const STYLES = {
-  error: 'bg-red-50 border-red-500 text-red-700',
-  success: 'bg-primary-50 border-primary-500 text-primary-800',
-  loading: 'bg-blue-50 border-primary-500 text-primary-800',
-  info: 'bg-gray-100 border-gray-500 text-gray-800',
+  error: 'border-danger-200 bg-danger-50 text-danger-700',
+  success: 'border-success-600/25 bg-success-50 text-success-700',
+  loading: 'border-brand-200 bg-brand-50 text-brand-700',
+  info: 'border-line bg-surface text-ink-secondary',
 };
 
 const ICONS = {
-  success: (
-    <svg className="w-5 h-5 flex-shrink-0 text-primary-600" fill="currentColor" viewBox="0 0 20 20">
-      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-    </svg>
-  ),
-  error: (
-    <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-    </svg>
-  ),
-  loading: (
-    <svg className="w-5 h-5 flex-shrink-0 text-primary-600 animate-spin" fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-    </svg>
-  ),
+  success: <CircleCheck className="h-5 w-5 flex-shrink-0 text-success-600" strokeWidth={2.2} />,
+  error: <CircleX className="h-5 w-5 flex-shrink-0 text-danger-600" strokeWidth={2.2} />,
+  loading: <Loader2 className="h-5 w-5 flex-shrink-0 animate-spin text-brand-600" strokeWidth={2.2} />,
+  info: <Info className="h-5 w-5 flex-shrink-0 text-brand-600" strokeWidth={2.2} />,
 };
 
 export default function StatusBanner({ status, isAnalyzing, onCancelAnalysis, onDismiss }) {
@@ -33,20 +22,22 @@ export default function StatusBanner({ status, isAnalyzing, onCancelAnalysis, on
     <div
       role="status"
       aria-live="polite"
-      className={`mb-4 border-l-4 px-4 py-3 rounded-lg text-sm flex items-start gap-3 justify-between ${STYLES[status.type] || STYLES.info}`}
+      className={`mb-6 flex items-start justify-between gap-3 rounded-2xl border px-5 py-4 text-sm shadow-soft ${STYLES[status.type] || STYLES.info}`}
     >
-      <div className="flex items-start gap-3 min-w-0">
-        {ICONS[status.type]}
+      <div className="flex min-w-0 items-start gap-3">
+        {ICONS[status.type] || ICONS.info}
         <div className="min-w-0">
-          <div className="font-semibold">{status.message}</div>
-          {status.subMessage && <div className="text-sm mt-0.5 opacity-90 break-words">{status.subMessage}</div>}
+          <div className="font-bold">{status.message}</div>
+          {status.subMessage && (
+            <div className="mt-0.5 break-words font-medium opacity-80">{status.subMessage}</div>
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
+      <div className="flex flex-shrink-0 items-center gap-2">
         {isAnalyzing && (
           <button
             onClick={onCancelAnalysis}
-            className="px-3 py-1 bg-white border border-gray-300 rounded text-xs font-medium hover:bg-gray-50 text-gray-700"
+            className="rounded-full border border-line bg-surface px-4 py-1.5 text-xs font-bold text-ink-secondary transition-colors hover:bg-surface-muted"
           >
             Cancel
           </button>
@@ -54,11 +45,9 @@ export default function StatusBanner({ status, isAnalyzing, onCancelAnalysis, on
         <button
           onClick={onDismiss}
           aria-label="Dismiss message"
-          className="p-1 rounded hover:bg-black/5 text-current"
+          className="rounded-full p-1.5 transition-colors hover:bg-black/5"
         >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X className="h-4 w-4" strokeWidth={2.2} />
         </button>
       </div>
     </div>

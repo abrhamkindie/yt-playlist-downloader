@@ -19,6 +19,10 @@ export function useDownloadSocket({ onNotify }) {
   }, [onNotify]);
 
   const socketRef = useRef(null);
+  // Extra subscribers (e.g. the desktop settings panel) that want raw events
+  // without owning the socket. Kept in a Set so subscription order is stable
+  // and the main effect never has to re-run.
+  const listenersRef = useRef(new Set());
 
   // Connect once.
   useEffect(() => {
@@ -27,6 +31,15 @@ export function useDownloadSocket({ onNotify }) {
 
     socket.on('connect', () => console.log('Socket connected'));
     socket.on('disconnect', () => console.log('Socket disconnected'));
+    socket.onAny((event, payload) => {
+      for (const listener of listenersRef.current) {
+        try {
+          listener(event, payload);
+        } catch (err) {
+          console.error('Socket listener failed', err);
+        }
+      }
+    });
 
     socket.on('download-progress', ({ id, progress, speed, eta, phase }) => {
       setVideoStates((prev) => ({
@@ -74,6 +87,12 @@ export function useDownloadSocket({ onNotify }) {
     setActiveDownloads((prev) => new Map(prev).set(url, id));
   }, []);
 
+  /** Subscribe to any server event. Returns an unsubscribe function. */
+  const onEvent = useCallback((listener) => {
+    listenersRef.current.add(listener);
+    return () => listenersRef.current.delete(listener);
+  }, []);
+
   const setVideosByIds = useCallback((list) => {
     // Seed states for newly loaded videos without wiping in-flight ones.
     setVideoStates((prev) => {
@@ -111,6 +130,7 @@ export function useDownloadSocket({ onNotify }) {
     setVideosByIds,
     resetAll,
     markCancelledLocally,
+    onEvent,
   };
 }
 

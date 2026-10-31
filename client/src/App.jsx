@@ -5,9 +5,10 @@ import HeroSection from './components/HeroSection';
 import VideoList from './components/VideoList';
 import StatusBanner from './components/StatusBanner';
 import SummaryBar from './components/SummaryBar';
+import SettingsPanel from './components/SettingsPanel';
 import { useDownloadSocket } from './hooks/useDownloadSocket';
 import { api } from './lib/api';
-import { MAX_PLAYLIST_VIDEOS } from './lib/constants';
+import { MAX_PLAYLIST_VIDEOS, isYouTubeUrl } from './lib/constants';
 
 function App() {
   const [videos, setVideos] = useState([]);
@@ -21,6 +22,8 @@ function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [search, setSearch] = useState('');
   const [hostedMode, setHostedMode] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [desktopInfo, setDesktopInfo] = useState(null);
 
   const abortControllerRef = useRef(null);
 
@@ -32,6 +35,7 @@ function App() {
     setVideosByIds,
     resetAll,
     markCancelledLocally,
+    onEvent,
   } = useDownloadSocket({ onNotify: setStatus });
 
   // Detect hosted mode once (drives UI: hide path controls, show save-to-device).
@@ -42,9 +46,45 @@ function App() {
       .catch(() => setHostedMode(false));
   }, []);
 
+  const refreshDesktop = useCallback(() => {
+    api
+      .desktopInfo()
+      .then(setDesktopInfo)
+      .catch(() => setDesktopInfo(null)); // hosted build, or server too old
+  }, []);
+
+  useEffect(() => {
+    if (hostedMode) return;
+    refreshDesktop();
+  }, [hostedMode, refreshDesktop]);
+
+  // The app checks for yt-dlp updates in the background at startup.
+  useEffect(() => {
+    if (hostedMode) return undefined;
+    return onEvent((event, payload) => {
+      if (event === 'ytdlp-updated') {
+        if (payload?.updated) {
+          setStatus({ type: 'success', message: `yt-dlp updated to ${payload.version}`, subMessage: 'Newer engine is active for the next download.' });
+        }
+        refreshDesktop();
+      } else if (event === 'ytdlp-status' || event === 'ytdlp-update-error') {
+        refreshDesktop();
+      }
+    });
+  }, [hostedMode, onEvent, refreshDesktop]);
+
   const handleAnalyze = useCallback(async () => {
-    if (!playlistUrl) {
+    const trimmedUrl = playlistUrl.trim();
+    if (!trimmedUrl) {
       setStatus({ type: 'error', message: 'Please enter a playlist URL' });
+      return;
+    }
+    if (!isYouTubeUrl(trimmedUrl)) {
+      setStatus({
+        type: 'error',
+        message: "That doesn't look like a valid YouTube link",
+        subMessage: 'Paste a full playlist or video URL, e.g. https://www.youtube.com/playlist?list=…',
+      });
       return;
     }
 
@@ -63,7 +103,7 @@ function App() {
     resetAll();
 
     try {
-      const data = await api.analyze(playlistUrl, controller.signal);
+      const data = await api.analyze(trimmedUrl, controller.signal);
       if (data.videos.length > MAX_PLAYLIST_VIDEOS) {
         setStatus({
           type: 'error',
@@ -234,10 +274,14 @@ function App() {
   const isIndeterminate = selectedVideos.size > 0 && selectedVideos.size < videos.length;
 
   return (
-    <div className="bg-gray-50 text-gray-900 min-h-screen flex flex-col font-sans">
-      <Header />
+    <div className="flex min-h-screen flex-col bg-canvas font-sans text-ink">
+      <Header
+        desktopMode={!hostedMode}
+        updateAvailable={Boolean(desktopInfo?.ytdlp?.updateAvailable)}
+        onOpenSettings={() => setSettingsOpen(true)}
+      />
 
-      <main className="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8 max-w-5xl">
+      <main className="mx-auto w-full max-w-6xl flex-grow px-4 py-8 sm:px-6 lg:px-8">
         <HeroSection
           playlistUrl={playlistUrl}
           setPlaylistUrl={setPlaylistUrl}
@@ -263,6 +307,7 @@ function App() {
         <VideoList
           videos={filteredVideos}
           totalCount={videos.length}
+          isAnalyzing={isAnalyzing}
           videoStates={videoStates}
           selectedVideos={selectedVideos}
           onToggleSelect={handleToggleSelect}
@@ -286,6 +331,16 @@ function App() {
       </main>
 
       <Footer />
+
+      {!hostedMode && (
+        <SettingsPanel
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          info={desktopInfo}
+          refresh={refreshDesktop}
+          onNotify={setStatus}
+        />
+      )}
     </div>
   );
 }

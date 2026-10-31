@@ -3,35 +3,167 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
+@import "@fontsource/plus-jakarta-sans/500.css";
+@import "@fontsource/plus-jakarta-sans/600.css";
+@import "@fontsource/plus-jakarta-sans/700.css";
+@import "@fontsource/plus-jakarta-sans/800.css";
 
+/*
+ * Design language — inspired by the VoyageGo travel landing page:
+ * warm cream canvas, deep-navy ink, ocean-blue brand, coral accent,
+ * pill controls, softly rounded surfaces and airy blue-tinted shadows.
+ */
 @theme {
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, sans-serif;
 
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
+  /* Brand — ocean blue */
+  --color-brand-50: #eef7fe;
+  --color-brand-100: #d9edfc;
+  --color-brand-200: #bce0fb;
+  --color-brand-300: #8accf8;
+  --color-brand-400: #52b0f3;
+  --color-brand-500: #279aea;
+  --color-brand-600: #147fd6;
+  --color-brand-700: #1266ad;
+  --color-brand-800: #14558d;
+  --color-brand-900: #164876;
+
+  /* Secondary — soft sky (badges, tints) */
+  --color-sky-50: #eaf6fe;
+  --color-sky-100: #d8edfd;
+  --color-sky-200: #b8e0fb;
+  --color-sky-600: #2f9ae8;
+  --color-sky-700: #127cc4;
+
+  /* Accent — warm coral */
+  --color-accent-50: #fff3ef;
+  --color-accent-100: #ffe4db;
+  --color-accent-500: #ff7f5c;
+  --color-accent-600: #f4633c;
+  --color-accent-700: #d94e2b;
+
+  /* Navy — headings & emphasis */
+  --color-navy-500: #22355c;
+  --color-navy-600: #1a2a4d;
+  --color-navy-700: #14233f;
+  --color-navy-800: #0f1c33;
+  --color-navy-900: #0a1425;
+
+  /* Surfaces — warm neutral scale */
+  --color-canvas: #faf7f2;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f3efe8;
+  --color-tint: #eaf3fb;
+  --color-line: #ece7dd;
+  --color-line-strong: #ddd6c9;
+
+  /* Ink */
+  --color-ink: #16263f;
+  --color-ink-secondary: #5d6b81;
+  --color-ink-muted: #97a2b3;
+
+  /* Semantic accents */
+  --color-success-50: #e9f9f0;
+  --color-success-100: #d2f2e0;
+  --color-success-600: #17a567;
+  --color-success-700: #0f8552;
+  --color-danger-50: #fdeeee;
+  --color-danger-100: #fbdbda;
+  --color-danger-200: #f7b9b6;
+  --color-danger-600: #e5484d;
+  --color-danger-700: #c93a3e;
+
+  /* Airy, blue-tinted elevation */
+  --shadow-soft: 0 2px 6px rgba(22, 38, 63, 0.04), 0 12px 28px -12px rgba(22, 38, 63, 0.08);
+  --shadow-card: 0 1px 2px rgba(22, 38, 63, 0.04), 0 8px 20px -10px rgba(22, 38, 63, 0.07);
+  --shadow-card-hover: 0 4px 10px rgba(22, 38, 63, 0.06), 0 18px 36px -12px rgba(22, 38, 63, 0.12);
+  --shadow-panel: 0 2px 8px rgba(22, 38, 63, 0.05), 0 24px 48px -16px rgba(22, 38, 63, 0.1);
+  --shadow-pop: 0 24px 64px -16px rgba(22, 38, 63, 0.24);
+  --shadow-brand: 0 10px 24px -8px rgba(20, 127, 214, 0.45);
+  --shadow-accent: 0 10px 24px -8px rgba(244, 99, 60, 0.45);
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  /* Consistent, on-brand focus ring across all interactive elements */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+
+  select {
+    background-image: none;
+  }
 }
 
 @layer utilities {
+  .ring-focus {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:border-brand-500;
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  /* Skeleton loading placeholder with a sweeping highlight */
+  .skeleton {
+    @apply bg-surface-muted;
+    background-image: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.75) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 200% 0;
+    }
+
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton {
+      animation: none;
+    }
+  }
+
+  /* Soft dot grid used behind the hero */
+  .dot-grid {
+    background-image: radial-gradient(circle, rgba(22, 38, 63, 0.08) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
   /* Custom Scrollbar */
   ::-webkit-scrollbar {
-    width: 8px;
+    width: 10px;
+    height: 10px;
   }
+
   ::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: transparent;
   }
+
   ::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
+    background: #ddd6c9;
+    border-radius: 8px;
+    border: 3px solid var(--color-canvas);
   }
+
   ::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+    background: #b9c2ce;
   }
 }
