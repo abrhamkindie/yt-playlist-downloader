@@ -116,6 +116,18 @@ function resolveJsRuntime() {
     return cachedRuntime;
   }
 
+  // If THIS process is plain Node (e.g. the hosted Render backend runs
+  // `node server.js`), its own binary is a guaranteed-working JS runtime for
+  // yt-dlp. Node installs on PaaS hosts often live outside the standard paths
+  // we scan below, so trust process.execPath first. (Electron is excluded —
+  // its execPath needs ELECTRON_RUN_AS_NODE and is handled further down.)
+  if (process.versions && process.versions.node && !process.versions.electron) {
+    if (isExecutable(process.execPath)) {
+      cachedRuntime = process.execPath;
+      return cachedRuntime;
+    }
+  }
+
   const exe = process.platform === 'win32' ? 'node.exe' : 'node';
   const candidates = [];
 
