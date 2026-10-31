@@ -6,6 +6,7 @@ import VideoList from './components/VideoList';
 import StatusBanner from './components/StatusBanner';
 import SummaryBar from './components/SummaryBar';
 import SettingsPanel from './components/SettingsPanel';
+import DesktopDownloadSection from './components/DesktopDownloadSection';
 import { useDownloadSocket } from './hooks/useDownloadSocket';
 import { api } from './lib/api';
 import { MAX_PLAYLIST_VIDEOS, isYouTubeUrl } from './lib/constants';
@@ -21,9 +22,9 @@ function App() {
   const [status, setStatus] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [search, setSearch] = useState('');
-  const [hostedMode, setHostedMode] = useState(false);
+  const [hostedMode, setHostedMode] = useState(null); // null = probing
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [desktopInfo, setDesktopInfo] = useState(null);
+  const [desktopInfo, setDesktopInfo] = useState(undefined); // undefined = probing, null = confirmed not desktop
 
   const abortControllerRef = useRef(null);
 
@@ -43,7 +44,12 @@ function App() {
     api
       .status()
       .then((data) => setHostedMode(Boolean(data.hosted)))
-      .catch(() => setHostedMode(false));
+      .catch(() => {
+        // If /api/status fails, the backend is unreachable.
+        // The desktop app always has a local server, so a failure here
+        // almost certainly means we're on the hosted site with a cold/slow
+        // backend. Leave hostedMode as null → treated as hosted (safe).
+      });
   }, []);
 
   const refreshDesktop = useCallback(() => {
@@ -53,8 +59,14 @@ function App() {
       .catch(() => setDesktopInfo(null)); // hosted build, or server too old
   }, []);
 
+
   useEffect(() => {
-    if (hostedMode) return;
+    // Probe desktop capabilities only after we know we are NOT hosted.
+    if (hostedMode === null) return; // still probing
+    if (hostedMode) {
+      setDesktopInfo(null); // definite: no desktop info on hosted server
+      return;
+    }
     refreshDesktop();
   }, [hostedMode, refreshDesktop]);
 
@@ -141,7 +153,7 @@ function App() {
   }, []);
 
   const ensureDownloadPath = useCallback(async () => {
-    if (hostedMode) return null; // server decides the path
+    if (hostedMode !== false) return null; // hosted or still probing — server decides the path
     if (downloadPath) return downloadPath;
 
     try {
@@ -175,7 +187,7 @@ function App() {
   const handleDownload = useCallback(
     async (video, explicitPath = null) => {
       let currentPath = explicitPath;
-      if (!hostedMode && !currentPath) {
+      if (hostedMode === false && !currentPath) {
         currentPath = await ensureDownloadPath();
         if (!currentPath) return;
       }
@@ -212,7 +224,7 @@ function App() {
 
   const handleDownloadSelected = useCallback(async () => {
     let currentPath = downloadPath;
-    if (!hostedMode && !currentPath) {
+    if (hostedMode === false && !currentPath) {
       currentPath = await ensureDownloadPath();
       if (!currentPath) return;
     }
@@ -273,10 +285,19 @@ function App() {
   const isAllSelected = videos.length > 0 && selectedVideos.size === videos.length;
   const isIndeterminate = selectedVideos.size > 0 && selectedVideos.size < videos.length;
 
+  // Only surface desktop affordances when we've CONFIRMED we're in the desktop
+  // app — a successful /api/desktop/info response. Avoids the deployed site
+  // showing a Settings button that opens a permanently-loading panel.
+  const isDesktop = Boolean(desktopInfo);
+  // Treat "still probing" (hostedMode === null) as hosted so path controls do
+  // not flash in before /api/status resolves. Confirmed desktop = false.
+  const isHosted = hostedMode !== false;
+
   return (
     <div className="flex min-h-screen flex-col bg-canvas font-sans text-ink">
       <Header
-        desktopMode={!hostedMode}
+        desktopMode={isDesktop}
+        hostedMode={isHosted}
         updateAvailable={Boolean(desktopInfo?.ytdlp?.updateAvailable)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -292,7 +313,7 @@ function App() {
           onPickDirectory={ensureDownloadPath}
           createSubfolder={createSubfolder}
           setCreateSubfolder={setCreateSubfolder}
-          hostedMode={hostedMode}
+          hostedMode={isHosted}
         />
 
         <StatusBanner
@@ -317,7 +338,7 @@ function App() {
           onDownload={handleDownload}
           onCancel={handleCancel}
           onOpenFolder={handleOpenFolder}
-          hostedMode={hostedMode}
+          hostedMode={isHosted}
           format={format}
           setFormat={setFormat}
           quality={quality}
@@ -328,11 +349,14 @@ function App() {
           onCancelAll={handleCancelAll}
           activeDownloadsCount={activeDownloads.size}
         />
+
+        {/* On the hosted site, promote the desktop app; in the desktop app itself, hide it. */}
+        {isHosted && <DesktopDownloadSection />}
       </main>
 
-      <Footer />
+      <Footer hostedMode={isHosted} />
 
-      {!hostedMode && (
+      {isDesktop && (
         <SettingsPanel
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}

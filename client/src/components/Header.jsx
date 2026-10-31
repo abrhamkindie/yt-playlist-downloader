@@ -1,7 +1,7 @@
 import React from 'react';
-import { Compass, Settings, MonitorSmartphone, CircleCheck } from 'lucide-react';
+import { Compass, Settings, MonitorSmartphone, CircleCheck, Download } from 'lucide-react';
 
-export default function Header({ desktopMode = false, updateAvailable = false, onOpenSettings }) {
+export default function Header({ desktopMode = false, hostedMode = false, updateAvailable = false, onOpenSettings }) {
   return (
     <header className="sticky top-0 z-50 border-b border-line/70 bg-canvas/85 backdrop-blur-md">
       <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -33,7 +33,18 @@ export default function Header({ desktopMode = false, updateAvailable = false, o
             </button>
           )}
 
-          <span className="hidden items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-xs font-semibold text-ink-secondary shadow-soft sm:flex">
+          {/* Hosted mode: promote the desktop app. Scrolls to the download section. */}
+          {hostedMode && (
+            <a
+              href="#desktop"
+              className="hidden items-center gap-2 rounded-full bg-accent-600 px-4 py-2 text-xs font-bold text-white shadow-accent transition-all hover:-translate-y-0.5 hover:bg-accent-700 sm:inline-flex"
+            >
+              <Download className="h-3.5 w-3.5" strokeWidth={2.4} />
+              Get Desktop App
+            </a>
+          )}
+
+          <span className="hidden items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-xs font-semibold text-ink-secondary shadow-soft md:flex">
             {desktopMode ? (
               <>
                 <MonitorSmartphone className="h-3.5 w-3.5 text-brand-600" strokeWidth={2.2} />

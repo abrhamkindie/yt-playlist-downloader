@@ -91,11 +91,32 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                 className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
                 onClick={onClose}
             >
-                <div role="dialog" aria-modal="true" className="rounded-[28px] border border-line bg-surface px-8 py-6 shadow-pop">
-                    <p className="flex items-center gap-2 text-sm font-semibold text-ink-secondary">
-                        <RefreshCw className="h-4 w-4 animate-spin" strokeWidth={2.2} />
-                        Loading desktop settings…
-                    </p>
+                <div
+                    role="dialog"
+                    aria-modal="true"
+                    className="w-full max-w-md rounded-[28px] border border-line bg-surface p-6 shadow-pop"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+                            <Info className="h-5 w-5" strokeWidth={2.2} />
+                        </span>
+                        <div className="min-w-0 flex-grow">
+                            <h2 className="font-display text-base font-extrabold tracking-tight text-ink">
+                                Desktop settings unavailable
+                            </h2>
+                            <p className="mt-1 text-sm text-ink-secondary">
+                                This looks like a hosted deployment — cookies and the yt-dlp updater only work
+                                inside the desktop app.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="mt-5 w-full rounded-full bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
+                    >
+                        Close
+                    </button>
                 </div>
             </div>
         );

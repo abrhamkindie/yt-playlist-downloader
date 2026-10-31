@@ -90,12 +90,23 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* Smooth anchor jumps (e.g. the Header "Get Desktop App" CTA) */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Keep the sticky header from covering the section title on jump */
+  [id] {
+    scroll-margin-top: 96px;
+  }
+
   h1,
   h2,
   h3 {
     font-family: var(--font-display);
     letter-spacing: -0.02em;
   }
+
 
   /* Consistent, on-brand focus ring across all interactive elements */
   :focus-visible {
