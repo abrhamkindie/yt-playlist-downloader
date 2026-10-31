@@ -329,6 +329,7 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                                 ) : null}
                             </div>
 
+
                             <textarea
                                 value={cookieText}
                                 onChange={(e) => setCookieText(e.target.value)}
