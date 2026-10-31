@@ -7,6 +7,7 @@ import StatusBanner from './components/StatusBanner';
 import SummaryBar from './components/SummaryBar';
 import SettingsPanel from './components/SettingsPanel';
 import DesktopDownloadSection from './components/DesktopDownloadSection';
+import ErrorModal from './components/ErrorModal';
 import { useDownloadSocket } from './hooks/useDownloadSocket';
 import { api } from './lib/api';
 import { MAX_PLAYLIST_VIDEOS, isYouTubeUrl } from './lib/constants';
@@ -20,6 +21,7 @@ function App() {
   const [format, setFormat] = useState('mp4');
   const [quality, setQuality] = useState('best');
   const [status, setStatus] = useState(null);
+  const [errorModal, setErrorModal] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [search, setSearch] = useState('');
   const [hostedMode, setHostedMode] = useState(null); // null = probing
@@ -27,6 +29,16 @@ function App() {
   const [desktopInfo, setDesktopInfo] = useState(undefined); // undefined = probing, null = confirmed not desktop
 
   const abortControllerRef = useRef(null);
+
+  // Route notifications: errors open a modal; everything else is an inline banner.
+  const handleNotify = useCallback((notification) => {
+    if (!notification) return;
+    if (notification.type === 'error') {
+      setErrorModal(notification);
+    } else {
+      setStatus(notification);
+    }
+  }, []);
 
   const {
     videoStates,
@@ -37,7 +49,7 @@ function App() {
     resetAll,
     markCancelledLocally,
     onEvent,
-  } = useDownloadSocket({ onNotify: setStatus });
+  } = useDownloadSocket({ onNotify: handleNotify });
 
   // Detect hosted mode once (drives UI: hide path controls, show save-to-device).
   useEffect(() => {
@@ -88,11 +100,11 @@ function App() {
   const handleAnalyze = useCallback(async () => {
     const trimmedUrl = playlistUrl.trim();
     if (!trimmedUrl) {
-      setStatus({ type: 'error', message: 'Please enter a playlist URL' });
+      handleNotify({ type: 'error', message: 'Please enter a playlist URL' });
       return;
     }
     if (!isYouTubeUrl(trimmedUrl)) {
-      setStatus({
+      handleNotify({
         type: 'error',
         message: "That doesn't look like a valid YouTube link",
         subMessage: 'Paste a full playlist or video URL, e.g. https://www.youtube.com/playlist?list=…',
@@ -117,7 +129,7 @@ function App() {
     try {
       const data = await api.analyze(trimmedUrl, controller.signal);
       if (data.videos.length > MAX_PLAYLIST_VIDEOS) {
-        setStatus({
+        handleNotify({
           type: 'error',
           message: `Playlist too large (${data.videos.length} videos). Max is ${MAX_PLAYLIST_VIDEOS}.`,
         });
@@ -135,7 +147,7 @@ function App() {
         setStatus({ type: 'info', message: 'Analysis cancelled' });
         return;
       }
-      setStatus({
+      handleNotify({
         type: 'error',
         message: 'Failed to analyze playlist',
         subMessage: error.message,
@@ -144,7 +156,7 @@ function App() {
       setIsAnalyzing(false);
       abortControllerRef.current = null;
     }
-  }, [playlistUrl, resetAll, setVideosByIds]);
+  }, [playlistUrl, resetAll, setVideosByIds, handleNotify]);
 
   const handleCancelAnalysis = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -176,13 +188,13 @@ function App() {
       }
     }
 
-    setStatus({
+    handleNotify({
       type: 'error',
       message: 'No download folder selected',
       subMessage: 'Pick a folder or run the desktop app for local saving.',
     });
     return null;
-  }, [downloadPath, hostedMode]);
+  }, [downloadPath, hostedMode, handleNotify]);
 
   const handleDownload = useCallback(
     async (video, explicitPath = null) => {
@@ -207,7 +219,7 @@ function App() {
           createSubfolder,
           format,
           quality,
-          playlistTitle: 'Playlist Downloads',
+          playlistTitle: 'StreamPull',
         });
         if (data.downloadId) {
           registerActive(video.url, data.downloadId);
@@ -362,9 +374,16 @@ function App() {
           onClose={() => setSettingsOpen(false)}
           info={desktopInfo}
           refresh={refreshDesktop}
-          onNotify={setStatus}
+          onNotify={handleNotify}
         />
       )}
+
+      <ErrorModal
+        error={errorModal}
+        onClose={() => setErrorModal(null)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        canOpenSettings={isDesktop}
+      />
     </div>
   );
 }
