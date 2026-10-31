@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     X,
     Cpu,
+    Package,
     RefreshCw,
     DownloadCloud,
+    ExternalLink,
     ShieldCheck,
     KeyRound,
     Globe,
@@ -49,6 +51,7 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
     const panelRef = useRef(null);
 
     const ytdlp = info?.ytdlp || {};
+    const app = info?.app || {};
     const auth = info?.auth || {};
     const browsers = auth.browsers || [];
     const browser = browserDraft ?? (auth.savedBrowserSource || 'none');
@@ -150,7 +153,7 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                                 Desktop settings
                             </h2>
                             <p className="mt-0.5 text-sm text-ink-secondary">
-                                The two reasons the desktop app keeps working when a hosted server gets blocked.
+                                Keep the app, its download engine, and your YouTube sign-in up to date.
                             </p>
                         </div>
                     </div>
@@ -164,6 +167,91 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                 </div>
 
                 <div className="space-y-5 px-6 py-6 sm:px-8">
+                    {/* ---------------- Application ---------------- */}
+                    <section className="rounded-2xl border border-line bg-canvas p-5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                                    <Package className="h-4 w-4" strokeWidth={2.2} />
+                                </span>
+                                <h3 className="text-sm font-bold text-ink">Application</h3>
+                            </div>
+                            <span
+                                className={
+                                    app.updateAvailable
+                                        ? 'inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-700'
+                                        : 'inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700'
+                                }
+                            >
+                                {app.updateAvailable ? (
+                                    <>
+                                        <DownloadCloud className="h-3 w-3" strokeWidth={2.4} />
+                                        Update: v{app.latestVersion}
+                                    </>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
+                                        Up to date
+                                    </>
+                                )}
+                            </span>
+                        </div>
+
+                        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Installed</dt>
+                                <dd className="font-bold text-ink sm:ml-auto">v{app.currentVersion || 'unknown'}</dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest</dt>
+                                <dd className="font-bold text-ink sm:ml-auto">v{app.latestVersion || 'unknown'}</dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
+                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Checked</dt>
+                                <dd className="font-bold text-ink sm:ml-auto">{relativeTime(app.lastCheckedAt)}</dd>
+                            </div>
+                        </dl>
+
+                        {app.lastError && (
+                            <p className="mt-3 flex items-start gap-2 rounded-xl bg-danger-50 px-3 py-2 text-xs font-medium text-danger-700">
+                                <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
+                                Update check failed: {app.lastError}
+                            </p>
+                        )}
+
+                        <div className="mt-5 flex flex-wrap gap-2">
+                            <button
+                                onClick={() =>
+                                    run('appcheck', api.checkApp, (r) =>
+                                        r?.updateAvailable ? `Update available: v${r.latestVersion}` : "You're on the latest version",
+                                    )
+                                }
+                                disabled={busy !== null}
+                                className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60 disabled:hover:translate-y-0"
+                            >
+                                <RefreshCw className={`h-4 w-4 ${busy === 'appcheck' ? 'animate-spin' : ''}`} strokeWidth={2.2} />
+                                {busy === 'appcheck' ? 'Checking…' : 'Check for updates'}
+                            </button>
+                            {app.updateAvailable && (
+                                <a
+                                    href={app.releaseUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
+                                >
+                                    <ExternalLink className="h-4 w-4" strokeWidth={2.2} />
+                                    Download v{app.latestVersion}
+                                </a>
+                            )}
+                        </div>
+
+                        <p className="mt-4 flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700">
+                            <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
+                            Checks GitHub Releases at startup (max every 6 h). Downloading opens your browser — install over the
+                            existing app to keep your settings and downloads.
+                        </p>
+                    </section>
+
                     {/* ---------------- Downloader engine ---------------- */}
                     <section className="rounded-2xl border border-line bg-canvas p-5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -328,7 +416,6 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                                     </span>
                                 ) : null}
                             </div>
-
 
                             <textarea
                                 value={cookieText}

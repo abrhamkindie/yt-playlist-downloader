@@ -57,6 +57,8 @@ export const api = {
 
   updateYtdlp: () => request('/api/ytdlp/update', { method: 'POST', body: JSON.stringify({ force: true }) }),
 
+  checkApp: () => request('/api/app/check', { method: 'POST', body: JSON.stringify({ force: true }) }),
+
   /** Hosted mode only — direct file URL for "save to device". */
   fileUrl: (id) => `${API_BASE_URL}/api/files/${encodeURIComponent(id)}`,
 
