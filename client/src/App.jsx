@@ -219,7 +219,7 @@ function App() {
           createSubfolder,
           format,
           quality,
-          playlistTitle: 'Playlist Downloads',
+          playlistTitle: 'StreamPull',
         });
         if (data.downloadId) {
           registerActive(video.url, data.downloadId);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Compass, Settings, MonitorSmartphone, CircleCheck, Download } from 'lucide-react';
+import { Settings, MonitorSmartphone, CircleCheck, Download } from 'lucide-react';
 
 export default function Header({ desktopMode = false, hostedMode = false, updateAvailable = false, onOpenSettings }) {
   return (
@@ -7,9 +7,11 @@ export default function Header({ desktopMode = false, hostedMode = false, update
       <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
         {/* Brand */}
         <a href="/" className="group flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-brand transition-transform group-hover:-rotate-6">
-            <Compass className="h-5 w-5" strokeWidth={2.2} />
-          </span>
+          <img
+            src="/icon.png"
+            alt="StreamPull logo"
+            className="h-10 w-10 rounded-2xl shadow-brand transition-transform group-hover:-rotate-6"
+          />
           <span className="font-display text-lg font-extrabold tracking-tight text-ink">
             Stream<span className="text-brand-600">Pull</span>
           </span>
