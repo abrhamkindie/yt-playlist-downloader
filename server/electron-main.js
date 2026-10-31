@@ -14,10 +14,13 @@ try {
 const { ready } = require('./server');
 
 function resolveIcon() {
+  // Same atom brand everywhere. `build/icon.png` is what electron-builder also
+  // uses for the OS taskbar/installer icon (dev tree); the packaged app ships
+  // the Vite build under client/dist, so the built icon.png lives there.
   const candidates = [
-    path.join(__dirname, 'public/favicon.ico'),
     path.join(__dirname, '../build/icon.png'),
-    path.join(__dirname, '../client/public/logo.svg'),
+    path.join(__dirname, '../client/dist/icon.png'),
+    path.join(__dirname, '../client/public/icon.png'),
   ];
   return candidates.find((c) => fs.existsSync(c));
 }
