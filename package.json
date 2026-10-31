@@ -1,7 +1,7 @@
 {
     "name": "streampull",
     "productName": "StreamPull",
-    "version": "1.2.1",
+    "version": "1.2.2",
     "private": true,
     "description": "Desktop YouTube playlist downloader (yt-dlp + ffmpeg, runs on your own machine/IP).",
     "author": "StreamPull",
