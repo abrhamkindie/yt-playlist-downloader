@@ -18,6 +18,9 @@ const VERSION = import.meta.env.VITE_APP_VERSION || '1.2.0';
 
 const RELEASES_URL = `https://github.com/${REPO}/releases`;
 const LATEST_URL = `https://github.com/${REPO}/releases/latest`;
+// Use /releases/latest/download/ so links always point to the newest release,
+// even if the frontend was built with an older VERSION constant.
+const DL = `https://github.com/${REPO}/releases/latest/download`;
 
 const OS_TABS = [
     {
@@ -28,9 +31,9 @@ const OS_TABS = [
         assets: [
             {
                 label: 'Installer (.exe)',
-                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-Setup-${VERSION}.exe`,
+                href: `${DL}/StreamPull-Setup.exe`,
                 primary: true,
-                size: '~90 MB',
+                size: '~130 MB',
             },
         ],
     },
@@ -42,7 +45,7 @@ const OS_TABS = [
         assets: [
             {
                 label: 'Disk Image (.dmg)',
-                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-${VERSION}-arm64.dmg`,
+                href: `${DL}/StreamPull-arm64.dmg`,
                 primary: true,
                 size: '~110 MB',
             },
@@ -56,13 +59,13 @@ const OS_TABS = [
         assets: [
             {
                 label: 'AppImage',
-                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-${VERSION}-x86_64.AppImage`,
+                href: `${DL}/StreamPull-x86_64.AppImage`,
                 primary: true,
                 size: '~105 MB',
             },
             {
                 label: 'Debian (.deb)',
-                href: `https://github.com/${REPO}/releases/download/v${VERSION}/StreamPull-${VERSION}-amd64.deb`,
+                href: `${DL}/StreamPull-amd64.deb`,
                 primary: false,
                 size: '~95 MB',
             },
