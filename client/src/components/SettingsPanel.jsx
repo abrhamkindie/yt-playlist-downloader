@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     X,
     Cpu,
@@ -7,22 +7,15 @@ import {
     DownloadCloud,
     ExternalLink,
     ShieldCheck,
-    KeyRound,
     Globe,
-    Info,
-    CheckCircle2,
     ChevronDown,
+    CheckCircle2,
+    TriangleAlert,
+    Trash2,
     Settings as SettingsIcon,
+    Info,
 } from 'lucide-react';
 import { api } from '../lib/api';
-
-const SOURCE_LABELS = {
-    managed: 'auto-updated copy',
-    bundled: 'bundled with the app',
-    system: 'system install (PATH)',
-    env: 'YTDLP_PATH override',
-    missing: 'not installed',
-};
 
 function relativeTime(ms) {
     if (!ms) return 'never';
@@ -35,19 +28,38 @@ function relativeTime(ms) {
     return `${Math.round(hours / 24)} d ago`;
 }
 
+const BTN_PRIMARY =
+    'inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:opacity-60 disabled:hover:translate-y-0';
+const BTN_SECONDARY =
+    'inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60 disabled:hover:translate-y-0';
+const BTN_GHOST =
+    'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-50';
+
+const PILL_SUCCESS =
+    'inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700';
+const PILL_UPDATE =
+    'inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-700';
+const PILL_PLAIN =
+    'inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-[11px] font-bold text-ink-secondary';
+
 /**
- * Desktop-only maintenance dialog.
+ * Desktop-only maintenance dialog, in two questions:
+ *   • am I up to date?   (app bundle + yt-dlp engine, one check, one action)
+ *   • am I signed in?    (which browser session the downloads should use)
  *
- * Two things decide whether a packaged build keeps working weeks after it was
- * shipped: yt-dlp must stay current (YouTube breaks it every few weeks) and
- * the request must look like a real signed-in user. Both live here because
- * neither is reachable through the app bundle on a read-only install.
+ * Every outcome is one line of text under the button that caused it. Nothing is
+ * reported through the app's global banner: it renders behind this modal's
+ * backdrop, so the user never saw it and it lingered as a stale banner after the
+ * dialog closed.
  */
-export default function SettingsPanel({ open, onClose, info, refresh, onNotify }) {
+export default function SettingsPanel({ open, onClose, info, refresh }) {
     const [busy, setBusy] = useState(null);
+    // { tone: 'ok'|'warn', where: 'updates'|'auth', text, sticky }. A success fades
+    // on its own; a failure stays until the next action so it can be read and
+    // retried. Only one result exists at a time — they can never stack up.
+    const [result, setResult] = useState(null);
     // null = "show what the server resolved"; a string = the user's pending pick.
     const [browserDraft, setBrowserDraft] = useState(null);
-    const [cookieText, setCookieText] = useState('');
     const panelRef = useRef(null);
 
     const ytdlp = info?.ytdlp || {};
@@ -56,30 +68,100 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
     const browsers = auth.browsers || [];
     const browser = browserDraft ?? (auth.savedBrowserSource || 'none');
 
+    const engineUpdate = Boolean(ytdlp.updateAvailable);
+    const appUpdate = Boolean(app.updateAvailable);
+    const engineCurrent = ytdlp.current?.version || ytdlp.managed?.version || null;
+    const checkedAt = Math.max(app.lastCheckedAt || 0, ytdlp.lastCheckedAt || 0) || null;
+    const checkError = [app.lastError, ytdlp.lastError].filter(Boolean).join(' · ');
+
+    const authLabel =
+        auth.method === 'file'
+            ? 'cookies.txt file'
+            : auth.method === 'browser'
+                ? `${auth.detail || 'browser'} session`
+                : 'Not set';
+
+    // Closing is the only moment state should be dropped: doing it here instead
+    // of in an effect keeps a stale "Engine reinstalled" line from flashing when
+    // the dialog is opened again.
+    const closePanel = useCallback(() => {
+        setResult(null);
+        setBrowserDraft(null);
+        onClose?.();
+    }, [onClose]);
+
     useEffect(() => {
         if (!open) return undefined;
-        const onKeyDown = (e) => e.key === 'Escape' && onClose?.();
+        const onKeyDown = (e) => e.key === 'Escape' && closePanel();
         window.addEventListener('keydown', onKeyDown);
         panelRef.current?.focus();
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [open, onClose]);
+    }, [open, closePanel]);
 
-    const cookieCount = useMemo(
-        () => cookieText.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith('#')).length,
-        [cookieText],
-    );
+    useEffect(() => {
+        if (!result || result.sticky) return undefined;
+        const timer = setTimeout(() => setResult(null), 8000);
+        return () => clearTimeout(timer);
+    }, [result]);
 
-    async function run(key, action, success) {
+    const resultLine = (where) =>
+        result?.where === where ? (
+            <p
+                role="status"
+                className={`mt-3 flex items-start gap-2 text-sm font-semibold ${result.tone === 'ok' ? 'text-success-700' : 'text-danger-700'
+                    }`}
+            >
+                {result.tone === 'ok' ? (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0" strokeWidth={2.4} />
+                ) : (
+                    <TriangleAlert className="mt-0.5 h-4 w-4 flex-shrink-0" strokeWidth={2.4} />
+                )}
+                <span>{result.text}</span>
+            </p>
+        ) : null;
+
+    async function run(key, action, success, where = 'updates') {
         setBusy(key);
         try {
-            const result = await action();
-            onNotify?.({
-                type: 'success',
-                message: success(result),
-                subMessage: result?.warning || undefined,
-            });
+            const res = await action();
+            const text = success(res);
+            setResult({ tone: 'ok', where, text: res?.warning ? `${text} — ${res.warning}` : text });
         } catch (error) {
-            onNotify?.({ type: 'error', message: 'That did not work', subMessage: error.message });
+            setResult({ tone: 'warn', where, text: error.message, sticky: true });
+        } finally {
+            setBusy(null);
+            refresh?.();
+        }
+    }
+
+    async function handleCheck() {
+        setBusy('check');
+        try {
+            const check = await api.checkAll();
+            const failed = [check?.errors?.app, check?.errors?.ytdlp].filter(Boolean);
+            const parts = [];
+            if (check?.ytdlp?.updateAvailable) parts.push(`engine ${check.ytdlp.latest}`);
+            if (check?.app?.updateAvailable) parts.push(`app v${check.app.latestVersion}`);
+
+            if (parts.length) {
+                setResult({
+                    tone: 'ok',
+                    where: 'updates',
+                    text: `Update available: ${parts.join(' and ')}`,
+                    sticky: failed.length > 0,
+                });
+            } else if (failed.length) {
+                setResult({ tone: 'warn', where: 'updates', text: `Could not check: ${failed.join(' · ')}`, sticky: true });
+            } else {
+                setResult({ tone: 'ok', where: 'updates', text: "You're on the latest version" });
+            }
+        } catch (error) {
+            setResult({
+                tone: 'warn',
+                where: 'updates',
+                text: `Could not check for updates: ${error.message}`,
+                sticky: true,
+            });
         } finally {
             setBusy(null);
             refresh?.();
@@ -115,17 +197,11 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                         </div>
                     </div>
                     <div className="mt-5 flex gap-2.5">
-                        <button
-                            onClick={() => refresh?.()}
-                            className="inline-flex flex-grow items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
-                        >
+                        <button onClick={() => refresh?.()} className={`${BTN_PRIMARY} flex-grow justify-center`}>
                             <RefreshCw className="h-4 w-4" strokeWidth={2.2} />
                             Try again
                         </button>
-                        <button
-                            onClick={onClose}
-                            className="rounded-full border border-line bg-canvas px-4 py-2.5 text-sm font-bold text-ink-secondary transition-colors hover:bg-surface-muted"
-                        >
+                        <button onClick={onClose} className={BTN_SECONDARY}>
                             Close
                         </button>
                     </div>
@@ -134,13 +210,10 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
         );
     }
 
-    const currentVersion = ytdlp.current?.version || ytdlp.managed?.version || null;
-    const updateAvailable = Boolean(ytdlp.updateAvailable);
-
     return (
         <div
             className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-ink/50 p-4 backdrop-blur-sm sm:p-8"
-            onClick={onClose}
+            onClick={closePanel}
         >
             <div
                 ref={panelRef}
@@ -149,10 +222,13 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                 aria-modal="true"
                 aria-label="Desktop settings"
                 onClick={(e) => e.stopPropagation()}
-                className="ring-focus my-auto w-full max-w-2xl overflow-hidden rounded-[28px] border border-line bg-surface shadow-pop outline-none"
+                // The header stays put and the body scrolls inside the card: on a
+                // short window the alternative is the whole modal scrolling away,
+                // which buries the close button above the fold.
+                className="ring-focus my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-xl flex-col overflow-hidden rounded-[28px] border border-line bg-surface shadow-pop outline-none sm:max-h-[calc(100dvh-4rem)]"
             >
                 {/* Header */}
-                <div className="flex items-start justify-between gap-4 border-b border-line bg-canvas px-6 py-5 sm:px-8">
+                <div className="flex flex-shrink-0 items-start justify-between gap-4 border-b border-line bg-canvas px-6 py-5 sm:px-8">
                     <div className="flex items-start gap-3">
                         <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white shadow-brand">
                             <SettingsIcon className="h-5 w-5" strokeWidth={2.2} />
@@ -162,12 +238,12 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                                 Desktop settings
                             </h2>
                             <p className="mt-0.5 text-sm text-ink-secondary">
-                                Keep the app, its download engine, and your YouTube sign-in up to date.
+                                Your app, its download engine and your YouTube sign-in.
                             </p>
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={closePanel}
                         aria-label="Close settings"
                         className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink-muted shadow-soft transition-colors hover:bg-surface-muted hover:text-ink"
                     >
@@ -175,27 +251,21 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                     </button>
                 </div>
 
-                <div className="space-y-5 px-6 py-6 sm:px-8">
-                    {/* ---------------- Application ---------------- */}
+                <div className="min-h-0 flex-grow space-y-5 overflow-y-auto px-6 py-6 sm:px-8">
+                    {/* ---------------- Updates: app + engine ---------------- */}
                     <section className="rounded-2xl border border-line bg-canvas p-5">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
+                            <h3 className="flex items-center gap-2.5 text-sm font-bold text-ink">
                                 <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
                                     <Package className="h-4 w-4" strokeWidth={2.2} />
                                 </span>
-                                <h3 className="text-sm font-bold text-ink">Application</h3>
-                            </div>
-                            <span
-                                className={
-                                    app.updateAvailable
-                                        ? 'inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-700'
-                                        : 'inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700'
-                                }
-                            >
-                                {app.updateAvailable ? (
+                                Updates
+                            </h3>
+                            <span className={engineUpdate || appUpdate ? PILL_UPDATE : PILL_SUCCESS}>
+                                {engineUpdate || appUpdate ? (
                                     <>
                                         <DownloadCloud className="h-3 w-3" strokeWidth={2.4} />
-                                        Update: v{app.latestVersion}
+                                        Update available
                                     </>
                                 ) : (
                                     <>
@@ -206,159 +276,114 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                             </span>
                         </div>
 
-                        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Installed</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">v{app.currentVersion || 'unknown'}</dd>
+                        <div className="mt-4 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-surface">
+                            <div className="flex items-center justify-between gap-3 px-4 py-3">
+                                <span className="flex items-center gap-2.5 text-sm font-semibold text-ink-secondary">
+                                    <Package className="h-4 w-4 text-ink-muted" strokeWidth={2.2} />
+                                    Application
+                                </span>
+                                <span className="text-sm font-bold text-ink">
+                                    v{app.currentVersion || 'unknown'}
+                                    {appUpdate && (
+                                        <span className="ml-2 font-semibold text-brand-700">→ v{app.latestVersion}</span>
+                                    )}
+                                </span>
                             </div>
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">v{app.latestVersion || 'unknown'}</dd>
+                            <div className="flex items-center justify-between gap-3 px-4 py-3">
+                                <span className="flex items-center gap-2.5 text-sm font-semibold text-ink-secondary">
+                                    <Cpu className="h-4 w-4 text-ink-muted" strokeWidth={2.2} />
+                                    Download engine
+                                </span>
+                                <span className="text-sm font-bold text-ink">
+                                    {engineCurrent || 'unknown'}
+                                    {engineUpdate && (
+                                        <span className="ml-2 font-semibold text-brand-700">→ {ytdlp.latest}</span>
+                                    )}
+                                </span>
                             </div>
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Checked</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">{relativeTime(app.lastCheckedAt)}</dd>
-                            </div>
-                        </dl>
+                        </div>
 
-                        {app.lastError && (
-                            <p className="mt-3 flex items-start gap-2 rounded-xl bg-danger-50 px-3 py-2 text-xs font-medium text-danger-700">
-                                <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
-                                Update check failed: {app.lastError}
+                        {checkError && (
+                            <p className="mt-3 flex items-start gap-2 text-xs font-medium text-danger-700">
+                                <TriangleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
+                                <span className="break-all">Last check failed: {checkError}</span>
                             </p>
                         )}
 
-                        <div className="mt-5 flex flex-wrap gap-2">
-                            <button
-                                onClick={() =>
-                                    run('appcheck', api.checkApp, (r) =>
-                                        r?.updateAvailable ? `Update available: v${r.latestVersion}` : "You're on the latest version",
-                                    )
-                                }
-                                disabled={busy !== null}
-                                className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60 disabled:hover:translate-y-0"
-                            >
-                                <RefreshCw className={`h-4 w-4 ${busy === 'appcheck' ? 'animate-spin' : ''}`} strokeWidth={2.2} />
-                                {busy === 'appcheck' ? 'Checking…' : 'Check for updates'}
+                        <div className="mt-5 flex flex-wrap items-center gap-2">
+                            <button onClick={handleCheck} disabled={busy !== null} className={BTN_SECONDARY}>
+                                <RefreshCw className={`h-4 w-4 ${busy === 'check' ? 'animate-spin' : ''}`} strokeWidth={2.2} />
+                                {busy === 'check' ? 'Checking…' : 'Check for updates'}
                             </button>
-                            {app.updateAvailable && (
+
+                            {engineUpdate && (
+                                <button
+                                    onClick={() =>
+                                        run('update', () => api.updateYtdlp(), (r) =>
+                                            r.updated ? `Engine updated to ${r.version}` : 'Engine was already current',
+                                        )
+                                    }
+                                    disabled={busy !== null}
+                                    className={BTN_PRIMARY}
+                                >
+                                    <DownloadCloud className={`h-4 w-4 ${busy === 'update' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
+                                    {busy === 'update' ? 'Downloading…' : `Update engine to ${ytdlp.latest}`}
+                                </button>
+                            )}
+
+                            {appUpdate && (
                                 <a
                                     href={app.releaseUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
+                                    className={BTN_PRIMARY}
                                 >
                                     <ExternalLink className="h-4 w-4" strokeWidth={2.2} />
                                     Download v{app.latestVersion}
                                 </a>
                             )}
+
+                            {!engineUpdate && !appUpdate && (
+                                <button
+                                    onClick={() =>
+                                        run(
+                                            'update',
+                                            () => api.updateYtdlp({ reinstall: true }),
+                                            (r) => `Engine reinstalled (${r.version})`,
+                                        )
+                                    }
+                                    disabled={busy !== null}
+                                    className={BTN_GHOST}
+                                >
+                                    <DownloadCloud className={`h-3.5 w-3.5 ${busy === 'update' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
+                                    {busy === 'update' ? 'Downloading…' : 'Reinstall engine'}
+                                </button>
+                            )}
+
+                            <span className="ml-auto text-xs text-ink-muted">Checked {relativeTime(checkedAt)}</span>
                         </div>
 
-                        <p className="mt-4 flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700">
-                            <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
-                            Checks GitHub Releases at startup (max every 6 h). Downloading opens your browser — install over the
-                            existing app to keep your settings and downloads.
-                        </p>
-                    </section>
-
-                    {/* ---------------- Downloader engine ---------------- */}
-                    <section className="rounded-2xl border border-line bg-canvas p-5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2.5">
-                                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
-                                    <Cpu className="h-4 w-4" strokeWidth={2.2} />
-                                </span>
-                                <h3 className="text-sm font-bold text-ink">Downloader engine</h3>
-                            </div>
-                            <span
-                                className={
-                                    updateAvailable
-                                        ? 'inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-700'
-                                        : 'inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700'
-                                }
-                            >
-                                {updateAvailable ? (
-                                    <>
-                                        <DownloadCloud className="h-3 w-3" strokeWidth={2.4} />
-                                        Update: {ytdlp.latest}
-                                    </>
-                                ) : (
-                                    <>
-                                        <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
-                                        Up to date
-                                    </>
-                                )}
-                            </span>
-                        </div>
-
-                        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Version</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">{currentVersion || 'unknown'}</dd>
-                            </div>
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Source</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">{SOURCE_LABELS[ytdlp.current?.source] || '—'}</dd>
-                            </div>
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Latest</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">{ytdlp.latest || 'unknown'}</dd>
-                            </div>
-                            <div className="flex items-baseline justify-between gap-3 sm:justify-start sm:gap-3">
-                                <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Checked</dt>
-                                <dd className="font-bold text-ink sm:ml-auto">{relativeTime(ytdlp.lastCheckedAt)}</dd>
-                            </div>
-                        </dl>
-
-                        {ytdlp.lastError && (
-                            <p className="mt-3 flex items-start gap-2 rounded-xl bg-danger-50 px-3 py-2 text-xs font-medium text-danger-700">
-                                <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
-                                Update check failed: {ytdlp.lastError}
-                            </p>
-                        )}
-
-                        <div className="mt-5 flex flex-wrap gap-2">
-                            <button
-                                onClick={() => run('check', api.checkYtdlp, () => 'Checked for yt-dlp updates')}
-                                disabled={busy !== null}
-                                className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60 disabled:hover:translate-y-0"
-                            >
-                                <RefreshCw className={`h-4 w-4 ${busy === 'check' ? 'animate-spin' : ''}`} strokeWidth={2.2} />
-                                {busy === 'check' ? 'Checking…' : 'Check for updates'}
-                            </button>
-                            <button
-                                onClick={() =>
-                                    run('update', api.updateYtdlp, (r) =>
-                                        r.updated ? `yt-dlp updated to ${r.version}` : 'yt-dlp was already current',
-                                    )
-                                }
-                                disabled={busy !== null}
-                                className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:opacity-60 disabled:hover:translate-y-0"
-                            >
-                                <DownloadCloud className={`h-4 w-4 ${busy === 'update' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
-                                {busy === 'update' ? 'Downloading…' : updateAvailable ? `Update to ${ytdlp.latest}` : 'Reinstall latest'}
-                            </button>
-                        </div>
-
-                        <p className="mt-4 flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700">
-                            <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
-                            Checked automatically at startup (max every 6 h). Downloads are never interrupted — an update is
-                            skipped while anything is in progress.
-                        </p>
+                        {resultLine('updates')}
                     </section>
 
                     {/* ---------------- YouTube sign-in ---------------- */}
                     <section className="rounded-2xl border border-line bg-canvas p-5">
-                        <div className="flex items-center gap-2.5">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-50 text-accent-700">
-                                <ShieldCheck className="h-4 w-4" strokeWidth={2.2} />
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <h3 className="flex items-center gap-2.5 text-sm font-bold text-ink">
+                                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-accent-50 text-accent-700">
+                                    <ShieldCheck className="h-4 w-4" strokeWidth={2.2} />
+                                </span>
+                                YouTube sign-in
+                            </h3>
+                            <span className={auth.method ? PILL_SUCCESS : PILL_PLAIN}>
+                                {auth.method && <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />}
+                                {authLabel}
                             </span>
-                            <h3 className="text-sm font-bold text-ink">YouTube sign-in (bot detection)</h3>
                         </div>
+
                         <p className="mt-2 text-sm text-ink-secondary">
-                            Requests go out from your own connection, which already helps a lot. If YouTube still says
-                            &ldquo;Sign in to confirm you&rsquo;re not a bot&rdquo;, let yt-dlp use the session you are
-                            actually logged into.
+                            If YouTube says &ldquo;Sign in to confirm you&rsquo;re not a bot&rdquo;, let the app use a
+                            browser you are actually logged into.
                         </p>
 
                         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -387,87 +412,48 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                             </div>
                             <button
                                 onClick={() =>
-                                    run('browser', () => api.setCookiesFromBrowser(browser), (r) => r.message).then(
-                                        () => setBrowserDraft(null),
-                                    )
+                                    run(
+                                        'browser',
+                                        () => api.setCookiesFromBrowser(browser),
+                                        (r) => r.message,
+                                        'auth',
+                                    ).then(() => setBrowserDraft(null))
                                 }
-                                disabled={busy !== null}
-                                className="inline-flex items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:opacity-60 disabled:hover:translate-y-0 sm:ml-auto"
+                                disabled={busy !== null || browser === (auth.savedBrowserSource || 'none')}
+                                className={`${BTN_PRIMARY} sm:ml-auto`}
                             >
                                 <CheckCircle2 className={`h-4 w-4 ${busy === 'browser' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
                                 {busy === 'browser' ? 'Saving…' : 'Apply'}
                             </button>
                         </div>
 
-                        <p className="mt-3 text-xs text-ink-muted">
-                            Close the browser you pick — its cookie database is locked while it runs.
-                        </p>
+                        {resultLine('auth')}
 
-                        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-surface px-4 py-3 shadow-soft">
-                            <KeyRound className="h-4 w-4 text-brand-600" strokeWidth={2.2} />
-                            <span className="text-xs font-bold uppercase tracking-wide text-ink-muted">Currently used</span>
-                            <span className="rounded-full bg-brand-50 px-3 py-1 text-xs font-bold text-brand-700">
-                                {auth.method === 'file'
-                                    ? `cookies.txt (${auth.cookiesFile?.split(/[\\/]/).pop()})`
-                                    : auth.method === 'browser'
-                                        ? `cookies from ${auth.detail}`
-                                        : 'no cookies — bot checks may fail'}
-                            </span>
-                        </div>
+                        {browser !== 'none' && (
+                            <p className="mt-3 text-xs text-ink-muted">
+                                Close {browser} first — its cookies are locked while it runs.
+                            </p>
+                        )}
 
-                        <div className="mt-5 border-t border-line pt-5">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <h4 className="text-sm font-bold text-ink">…or paste a cookies.txt export</h4>
-                                {auth.method === 'file' ? (
-                                    <span className="inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700">
-                                        <CheckCircle2 className="h-3 w-3" strokeWidth={2.4} />
-                                        Active: {auth.cookiesFile?.split('/').pop()}
-                                    </span>
-                                ) : null}
-                            </div>
-
-                            <textarea
-                                value={cookieText}
-                                onChange={(e) => setCookieText(e.target.value)}
-                                rows={4}
-                                spellCheck={false}
-                                aria-label="cookies.txt contents"
-                                placeholder={'# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tFALSE\t1893456000\t__Secure-1PSID\t…'}
-                                className="ring-focus mt-3 w-full rounded-2xl border border-line bg-surface p-4 font-mono text-xs text-ink shadow-soft transition-shadow placeholder:text-ink-muted"
-                            />
-
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {auth.method === 'file' && (
+                            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+                                <span className="text-xs text-ink-secondary">
+                                    A saved cookies.txt is being used instead of the browser above.
+                                </span>
                                 <button
-                                    onClick={() => run('cookies', () => api.saveCookies(cookieText), (r) => r.message)}
-                                    disabled={busy !== null || cookieCount === 0}
-                                    className="inline-flex items-center gap-2 rounded-full bg-brand-600 px-4 py-2 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700 disabled:opacity-60 disabled:hover:translate-y-0"
-                                >
-                                    <KeyRound className={`h-4 w-4 ${busy === 'cookies' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
-                                    {busy === 'cookies' ? 'Saving…' : `Save ${cookieCount ? `(${cookieCount})` : ''}`}
-                                </button>
-                                <button
-                                    onClick={async () => {
-                                        await run('clear', api.clearCookies, (r) => r.message);
-                                        setCookieText('');
-                                    }}
-                                    disabled={busy !== null || auth.method !== 'file'}
+                                    onClick={() => run('clear', api.clearCookies, () => 'cookies.txt removed', 'auth')}
+                                    disabled={busy !== null}
                                     className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-danger-200 hover:bg-danger-50 hover:text-danger-700 disabled:opacity-60 disabled:hover:translate-y-0"
                                 >
-                                    <X className="h-4 w-4" strokeWidth={2.4} />
-                                    Remove saved cookies
+                                    <Trash2 className={`h-4 w-4 ${busy === 'clear' ? 'animate-pulse' : ''}`} strokeWidth={2.2} />
+                                    {busy === 'clear' ? 'Removing…' : 'Remove it'}
                                 </button>
-                                <span className="text-xs text-ink-muted">A saved file always takes priority over the browser source.</span>
                             </div>
-                        </div>
+                        )}
                     </section>
 
-                    <p className="flex items-start gap-2 rounded-xl bg-sky-50 px-4 py-3 text-xs font-medium text-sky-700">
-                        <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />
-                        <span className="break-all">
-                            Settings and downloads of the engine are stored in{' '}
-                            <code className="rounded bg-white/70 px-1.5 py-0.5 font-mono text-[11px]">{info?.dataDir || '—'}</code> — a
-                            writable folder that survives app updates.
-                        </span>
+                    <p className="truncate text-center text-xs text-ink-muted" title={info?.dataDir || ''}>
+                        Settings and the engine live in <code className="font-mono">{info?.dataDir || '—'}</code>
                     </p>
                 </div>
             </div>

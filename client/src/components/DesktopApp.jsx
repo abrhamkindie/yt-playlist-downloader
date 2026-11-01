@@ -68,11 +68,14 @@ export default function DesktopApp() {
         refreshDesktop();
     }, [refreshDesktop]);
 
-    // The app checks for yt-dlp updates in the background at startup.
+    // The app checks for yt-dlp updates in the background at startup. A manual
+    // update started from Settings is the same socket event — while that dialog is
+    // open it already reports the result inline, and the banner below the fold
+    // would only resurface as stale text after the dialog closes.
     useEffect(() => {
         return onEvent((event, payload) => {
             if (event === 'ytdlp-updated') {
-                if (payload?.updated) {
+                if (payload?.updated && !settingsOpen) {
                     setStatus({ type: 'success', message: `yt-dlp updated to ${payload.version}`, subMessage: 'Newer engine is active for the next download.' });
                 }
                 refreshDesktop();
@@ -80,7 +83,7 @@ export default function DesktopApp() {
                 refreshDesktop();
             }
         });
-    }, [onEvent, refreshDesktop]);
+    }, [onEvent, refreshDesktop, settingsOpen]);
 
     const handleAnalyze = useCallback(async () => {
         const trimmedUrl = playlistUrl.trim();
@@ -347,14 +350,15 @@ export default function DesktopApp() {
             <Footer />
 
             {/* Kept mounted while open so a refresh that stops answering still shows
-          the "unavailable" dialog instead of silently swallowing the panel. */}
+          the "unavailable" dialog instead of silently swallowing the panel. It
+          reports its own results inline — the global banner would sit behind the
+          modal backdrop and outlive the dialog it described. */}
             {(isDesktop || settingsOpen) && (
                 <SettingsPanel
                     open={settingsOpen}
                     onClose={() => setSettingsOpen(false)}
                     info={desktopInfo ?? null}
                     refresh={refreshDesktop}
-                    onNotify={handleNotify}
                 />
             )}
 

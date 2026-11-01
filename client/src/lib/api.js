@@ -54,16 +54,15 @@ export const api = {
       body: JSON.stringify({ browser }),
     }),
 
-  saveCookies: (content) =>
-    request('/api/cookies', { method: 'POST', body: JSON.stringify({ content }) }),
-
   clearCookies: () => request('/api/cookies', { method: 'DELETE' }),
 
-  checkYtdlp: () => request('/api/ytdlp/check', { method: 'POST', body: JSON.stringify({ force: true }) }),
+  // Engine + app bundle in one round trip — the settings panel has a single
+  // "Check for updates" action, not one per component.
+  checkAll: () => request('/api/desktop/check', { method: 'POST' }),
 
-  updateYtdlp: () => request('/api/ytdlp/update', { method: 'POST', body: JSON.stringify({ force: true }) }),
-
-  checkApp: () => request('/api/app/check', { method: 'POST', body: JSON.stringify({ force: true }) }),
+  // reinstall: fetch the current release again even when nothing is pending.
+  updateYtdlp: ({ reinstall = false } = {}) =>
+    request('/api/ytdlp/update', { method: 'POST', body: JSON.stringify({ force: true, reinstall }) }),
 
   baseUrl: API_BASE_URL,
 };
