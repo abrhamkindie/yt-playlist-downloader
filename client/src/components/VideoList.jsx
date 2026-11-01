@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link2, SlidersHorizontal, Download, SearchX, Compass, MapPin } from 'lucide-react';
+import { Link2, SlidersHorizontal, Download, SearchX, Compass, MapPin, Sparkles } from 'lucide-react';
 import VideoControls from './VideoControls';
 import VideoCard from './VideoCard';
 
@@ -204,6 +204,11 @@ export default function VideoList({
     return <EmptyState />;
   }
 
+  // Split the target video(s) from any appended related videos so the UI can
+  // label them. Playlists have no related entries, so everything is primary.
+  const primaryVideos = videos.filter((v) => !v.isRelated);
+  const relatedVideos = videos.filter((v) => v.isRelated);
+
   return (
     <div className="space-y-3">
       <VideoControls
@@ -227,7 +232,7 @@ export default function VideoList({
         <NoMatches search={search} />
       ) : (
         <div className="space-y-3">
-          {videos.map((video) => (
+          {primaryVideos.map((video) => (
             <VideoCard
               key={video.id}
               video={video}
@@ -240,6 +245,32 @@ export default function VideoList({
               hostedMode={hostedMode}
             />
           ))}
+
+          {relatedVideos.length > 0 && (
+            <>
+              <div className="flex items-center gap-3 pt-4 pb-1">
+                <div className="h-px flex-grow bg-line" />
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-ink-muted">
+                  <Sparkles className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  Related videos
+                </span>
+                <div className="h-px flex-grow bg-line" />
+              </div>
+              {relatedVideos.map((video) => (
+                <VideoCard
+                  key={video.id}
+                  video={video}
+                  state={videoStates[video.id]}
+                  isSelected={selectedVideos.has(video.id)}
+                  onToggleSelect={onToggleSelect}
+                  onDownload={onDownload}
+                  onCancel={onCancel}
+                  onOpenFolder={onOpenFolder}
+                  hostedMode={hostedMode}
+                />
+              ))}
+            </>
+          )}
         </div>
       )}
     </div>

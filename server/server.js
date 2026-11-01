@@ -72,7 +72,7 @@ api.post('/analyze', async (req, res, next) => {
     // Friendly 400 before yt-dlp is ever spawned (non-URLs, non-YouTube links).
     const target = parseYouTubeUrl(url);
 
-    const videos = await scrapePlaylist(target);
+    const videos = await scrapePlaylist(target, { includeRelated: true });
     if (!videos || videos.length === 0) {
       throw new HttpError(404, 'No videos found');
     }

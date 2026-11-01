@@ -4,6 +4,7 @@ const { sanitizeFilename, uniqueFilePath } = require('../lib/files');
 const { friendlyYtdlpError } = require('../lib/errors');
 const { parseYouTubeUrl } = require('../lib/urls');
 const { parseProgressLine, buildArgs } = require('../services/downloader');
+const { isRealPlaylist, extractYtInitialData, collectRelatedVideos } = require('../services/scraper');
 const { validateLocalDownloadPath } = require('../lib/config');
 const fs = require('fs');
 const os = require('os');
@@ -170,5 +171,56 @@ describe('validateLocalDownloadPath', () => {
     assert.throws(() => validateLocalDownloadPath('relative/path'));
     assert.throws(() => validateLocalDownloadPath('/definitely/does/not/exist/xyz'));
     assert.throws(() => validateLocalDownloadPath(''));
+  });
+});
+
+describe('isRealPlaylist', () => {
+  test('treats explicit playlist pages and user playlists as playlists', () => {
+    assert.ok(isRealPlaylist('https://www.youtube.com/playlist?list=PL123'));
+    assert.ok(isRealPlaylist('https://www.youtube.com/watch?v=abc&list=PL123'));
+    assert.ok(isRealPlaylist('https://youtube.com/watch?v=abc&list=UU123'));
+  });
+
+  test('ignores auto-generated lists so a single video stays single', () => {
+    // Mix / Radio
+    assert.ok(!isRealPlaylist('https://www.youtube.com/watch?v=abc&list=RDMx9SzqJr0'));
+    // Liked videos
+    assert.ok(!isRealPlaylist('https://www.youtube.com/watch?v=abc&list=LLx9SzqJr0'));
+    // Watch later
+    assert.ok(!isRealPlaylist('https://www.youtube.com/watch?v=abc&list=WL'));
+    // Plain watch URL with no list at all
+    assert.ok(!isRealPlaylist('https://www.youtube.com/watch?v=abc'));
+    assert.ok(!isRealPlaylist('https://youtu.be/abc'));
+  });
+});
+
+describe('extractYtInitialData / collectRelatedVideos', () => {
+  test('brace-matches the ytInitialData object out of HTML', () => {
+    const html = '<script>var ytInitialData = {"a":{"b":"}"},"c":1};</script>rest';
+    const data = extractYtInitialData(html);
+    assert.deepStrictEqual(data, { a: { b: '}' }, c: 1 });
+  });
+
+  test('returns null when the marker is missing', () => {
+    assert.strictEqual(extractYtInitialData('<html>nope</html>'), null);
+  });
+
+  test('collects videoRenderer, lockupViewModel and videoWithContextRenderer entries', () => {
+    const data = {
+      contents: {
+        rails: [
+          { videoRenderer: { videoId: 'aaaaaaaaaaa', title: { runs: [{ text: 'Vid A' }] } } },
+          { lockupViewModel: { contentId: 'bbbbbbbbbbb', metadata: { lockupMetadataViewModel: { title: { content: 'Vid B' } } } } },
+          { lockupViewModel: { contentId: 'notavideoidlonger' } },
+          { videoWithContextRenderer: { videoId: 'ccccccccccc', headline: { runs: [{ text: 'Vid C' }] }, lengthText: { simpleText: '4:20' } } },
+        ],
+      },
+    };
+    const out = [];
+    collectRelatedVideos(data, out);
+    assert.deepStrictEqual(
+      out.map((v) => [v.id, v.title]),
+      [['aaaaaaaaaaa', 'Vid A'], ['bbbbbbbbbbb', 'Vid B'], ['ccccccccccc', 'Vid C']]
+    );
   });
 });

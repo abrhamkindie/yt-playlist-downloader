@@ -137,11 +137,20 @@ function App() {
       }
       setVideos(data.videos);
       setVideosByIds(data.videos);
-      setStatus({
-        type: 'success',
-        message: 'Playlist loaded successfully!',
-        subMessage: `Found ${data.videos.length} videos`,
-      });
+      const relatedCount = data.videos.filter((v) => v.isRelated).length;
+      setStatus(
+        relatedCount > 0
+          ? {
+            type: 'success',
+            message: 'Video loaded!',
+            subMessage: `Plus ${relatedCount} related ${relatedCount === 1 ? 'video' : 'videos'}`,
+          }
+          : {
+            type: 'success',
+            message: 'Playlist loaded successfully!',
+            subMessage: `Found ${data.videos.length} videos`,
+          },
+      );
     } catch (error) {
       if (error.name === 'AbortError') {
         setStatus({ type: 'info', message: 'Analysis cancelled' });
