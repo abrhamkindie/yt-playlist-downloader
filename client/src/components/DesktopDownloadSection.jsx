@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     Download,
     Tag,
@@ -11,6 +11,9 @@ import {
     Cookie,
     Zap,
     Info,
+    Terminal,
+    Copy,
+    Check,
 } from 'lucide-react';
 import { APP_VERSION, OS_TABS, RELEASES_URL, LATEST_URL, detectOS, getOsTab } from '../lib/releases';
 
@@ -54,10 +57,35 @@ const BTN_GHOST =
  */
 export default function DesktopDownloadSection() {
     // Lazy initializer: the visitor's own platform is pre-selected, but they can
-    // switch tabs freely (detectOS is pure and runs only in the browser).
+    // switch tabs freely (detectOS is pure and runs in the browser only).
     const [active, setActive] = useState(detectOS);
+    const [copied, setCopied] = useState(false);
+    const copiedTimer = useRef(null);
 
     const tab = getOsTab(active);
+
+    useEffect(() => () => window.clearTimeout(copiedTimer.current), []);
+
+    // Clipboard needs a user gesture and can still throw (insecure origin, denied
+    // permission), so keep a selection-based fallback and never fail the click.
+    async function copyInstallCommand(command) {
+        try {
+            await navigator.clipboard.writeText(command);
+        } catch {
+            const helper = document.createElement('textarea');
+            helper.value = command;
+            helper.setAttribute('readonly', '');
+            helper.style.position = 'fixed';
+            helper.style.opacity = '0';
+            document.body.appendChild(helper);
+            helper.select();
+            document.execCommand('copy');
+            document.body.removeChild(helper);
+        }
+        window.clearTimeout(copiedTimer.current);
+        setCopied(true);
+        copiedTimer.current = window.setTimeout(() => setCopied(false), 2000);
+    }
 
     return (
         <section
@@ -134,11 +162,13 @@ export default function DesktopDownloadSection() {
                             <a
                                 key={asset.label}
                                 href={asset.href}
-                                className={asset.primary ? BTN_PRIMARY : BTN_SECONDARY}
+                                className={asset.primary ? BTN_PRIMARY : asset.ghost ? BTN_GHOST : BTN_SECONDARY}
                             >
                                 <Download className="h-4 w-4" strokeWidth={2.4} />
                                 {asset.label}
-                                <span className="ml-1 text-[10px] font-semibold opacity-70">{asset.size}</span>
+                                {asset.size && (
+                                    <span className="ml-1 text-[10px] font-semibold opacity-70">{asset.size}</span>
+                                )}
                             </a>
                         ))}
                         <a href={RELEASES_URL} target="_blank" rel="noreferrer" className={BTN_GHOST}>
@@ -147,6 +177,38 @@ export default function DesktopDownloadSection() {
                             <ExternalLink className="h-3 w-3" strokeWidth={2.2} />
                         </a>
                     </div>
+
+                    {/* One command instead of four buttons, for the people who
+                        would rather stay in the terminal. */}
+                    {tab.installCommand && (
+                        <div className="mt-4 rounded-2xl border border-line bg-surface p-4 shadow-soft">
+                            <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-ink-muted">
+                                <Terminal className="h-3.5 w-3.5" strokeWidth={2.4} />
+                                Or install from the terminal
+                            </p>
+                            <div className="mt-2.5 flex flex-col gap-2 sm:flex-row sm:items-center">
+                                <code className="flex-grow rounded-xl bg-canvas px-3 py-2 font-mono text-[11px] leading-relaxed text-ink [overflow-wrap:anywhere]">
+                                    {tab.installCommand}
+                                </code>
+                                <button
+                                    type="button"
+                                    onClick={() => copyInstallCommand(tab.installCommand)}
+                                    aria-label="Copy the install command"
+                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-line bg-canvas px-4 py-2 text-xs font-bold text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink"
+                                >
+                                    {copied ? (
+                                        <Check className="h-3.5 w-3.5 text-success-600" strokeWidth={2.6} />
+                                    ) : (
+                                        <Copy className="h-3.5 w-3.5" strokeWidth={2.2} />
+                                    )}
+                                    {copied ? 'Copied' : 'Copy'}
+                                </button>
+                            </div>
+                            <p className="mt-2 text-xs text-ink-muted">
+                                Picks the build that fits your distro, and checks its published checksum.
+                            </p>
+                        </div>
+                    )}
 
                     <p className="mt-5 flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700">
                         <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" strokeWidth={2.4} />

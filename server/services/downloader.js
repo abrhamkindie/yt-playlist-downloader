@@ -16,6 +16,11 @@ function buildArgs({ url, format, quality, filePath, fallback = false }) {
   const args = [
     '--newline',
     '--no-mtime',
+    // One task always means one video. yt-dlp expands a watch URL that still
+    // carries a list= param into the whole playlist by default, which would
+    // stream dozens of videos into this single output path. Related videos and
+    // playlist entries are enqueued separately, so pin the single-video mode.
+    '--no-playlist',
     '--retries', '10',
     '--fragment-retries', '10',
     '--socket-timeout', '30',
