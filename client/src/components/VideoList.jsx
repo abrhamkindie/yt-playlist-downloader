@@ -185,7 +185,6 @@ export default function VideoList({
   onDownload,
   onCancel,
   onOpenFolder,
-  hostedMode,
   format,
   setFormat,
   quality,
@@ -242,7 +241,6 @@ export default function VideoList({
               onDownload={onDownload}
               onCancel={onCancel}
               onOpenFolder={onOpenFolder}
-              hostedMode={hostedMode}
             />
           ))}
 
@@ -266,7 +264,6 @@ export default function VideoList({
                   onDownload={onDownload}
                   onCancel={onCancel}
                   onOpenFolder={onOpenFolder}
-                  hostedMode={hostedMode}
                 />
               ))}
             </>

@@ -1,10 +1,13 @@
 services:
+  # The public deployment is a download portal for the desktop app: it serves
+  # the built client and answers /api/status only. No yt-dlp, no ffmpeg, no
+  # downloads ever happen here — see hostedPortalOnly in server/server.js.
   - type: web
     name: youtube-downloader
     env: node
     region: oregon
     plan: free
-    buildCommand: cd server && npm install && cd ../client && npm install && npm run build && cd .. && pip install yt-dlp
+    buildCommand: cd server && npm install && cd ../client && npm install && npm run build && cd ..
     startCommand: cd server && node server.js
     envVars:
       - key: NODE_ENV

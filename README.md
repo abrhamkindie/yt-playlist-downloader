@@ -1,6 +1,6 @@
 # YouTube Playlist Downloader
 
-A modern YouTube playlist downloader with a React frontend and Node.js backend. Download videos and playlists in various formats with real-time progress tracking.
+StreamPull is a **desktop app** (Electron + yt-dlp + ffmpeg) with a React frontend and a Node.js backend that runs on your own machine. The public website is a **download portal** for that app — it never downloads anything itself.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3E18-brightgreen.svg)
@@ -14,33 +14,43 @@ A modern YouTube playlist downloader with a React frontend and Node.js backend. 
 - 🎯 Quality selection (Best → 360p)
 - 🚀 Concurrent downloads with queue management (3 parallel by default)
 - 🔎 Search/filter, select-all, and batch summary progress
-- 🌐 Hosted mode: files stream back to the browser ("Save to device")
-- 🖥️ Desktop mode (Electron): true local saving with native folder picker
+- 🖥️ Desktop app (Electron): local saving with native folder picker, cookies, self-updating yt-dlp
+- 🌐 Website (`NODE_ENV=production`): download portal — platform detection, installer links, no dead-end downloads
 - 🛡️ Security hardened: no shell interpolation, rate limiting, path confinement
 - 🔄 Cancel individual downloads or everything at once
 
 ## Modes
 
-| | 🌐 Hosted (e.g. Render) | 🖥️ Desktop / Electron |
+| | 🖥️ Desktop / Electron | 🌐 Hosted (e.g. Render) |
 |---|---|---|
-| Trigger | `NODE_ENV=production` and not Electron | Electron (`npm run app`) or plain `npm start` locally |
-| Download path | Server-managed (`DOWNLOADS_DIR` env, default `server/downloads`) | Your local disk via native folder picker |
-| Get files | "Save to device" button (`GET /api/files/:id`) | "Open Folder" button |
-| Path/open-folder APIs | Disabled for security | Enabled |
+| Trigger | Electron (`npm run app`) or plain `npm start` locally | `NODE_ENV=production` and not Electron |
+| What you get | The full downloader UI | A portal that links to the released builds |
+| Downloads | Written to your disk via native folder picker | Not performed — `POST /api/analyze` and `/api/download` answer **410** |
+| Path / open-folder / settings APIs | Enabled | Not registered |
+| Cookie & yt-dlp updates | Yours (settings panel, background checks) | Irrelevant: the server never touches a video |
+
+The client decides which of the two to render by asking `GET /api/status`; if the answer is missing, an error, or slow, it shows the portal (a desktop app always has a local server answering).
 
 ## Project Structure
 
 ```
 ├── client/                     # React 19 + Vite + Tailwind v4
 │   └── src/
-│       ├── components/         # Header, HeroSection, VideoList, VideoCard, VideoControls,
-│       │                       # SummaryBar, StatusBanner, Footer
+│       ├── components/
+│       │   ├── HostedPortal.jsx           # website: download portal (hero + why-not-browser)
+│       │   ├── DesktopDownloadSection.jsx # website: platform tabs + installer links + steps
+│       │   ├── DesktopApp.jsx             # desktop: analyze → select → download
+│       │   ├── Header.jsx / Footer.jsx / HeroSection.jsx
+│       │   ├── VideoList.jsx / VideoCard.jsx / VideoControls.jsx
+│       │   ├── SummaryBar.jsx / StatusBanner.jsx / ErrorModal.jsx
+│       │   └── SettingsPanel.jsx          # desktop only: cookies + yt-dlp/app updates
 │       ├── hooks/
 │       │   └── useDownloadSocket.js  # single socket connection + download state
 │       ├── lib/
 │       │   ├── api.js          # fetch wrapper for all endpoints
-│       │   └── constants.js    # formats/qualities (mirrors server)
-│       ├── App.jsx
+│       │   ├── constants.js    # formats/qualities (mirrors server)
+│       │   └── releases.js     # release URLs, per-OS assets, OS detection
+│       ├── App.jsx             # probes /api/status → portal or desktop app
 │       └── main.jsx
 │
 ├── server/
@@ -119,31 +129,32 @@ cd client && npm run build     # production build
 
 ## Fixing YouTube Bot Detection
 
-If you see "Sign in to confirm you're not a bot":
+Only relevant where downloads actually run — your machine. The hosted portal never contacts YouTube.
 
-1. **Update yt-dlp** (most common fix):
+1. **Update yt-dlp** (most common fix; the desktop app does this itself in the background):
    ```bash
    cd server && curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o yt-dlp && chmod +x yt-dlp
    ```
 2. **Provide cookies** (never commit them!):
-   - Export cookies with a browser extension ("Get cookies.txt LOCALLY")
-   - Save as `server/cookies.txt` locally, **or**
-   - Set `YOUTUBE_COOKIES_B64` (base64) / `YOUTUBE_COOKIES` env var on the server
+   - Desktop: Settings → *Use cookies from your browser* (Chrome, Firefox, Edge…)
+   - Export cookies with a browser extension ("Get cookies.txt LOCALLY") and save as `server/cookies.txt`, **or**
+   - Set `YOUTUBE_COOKIES_B64` (base64) / `YOUTUBE_COOKIES` env var on **your** machine — the hosted deployment ignores them
 3. Newer yt-dlp versions use well-tuned default player clients — avoid forcing `player_client` overrides unless debugging.
 
 ## API
 
 | Method | Endpoint | Notes |
 |---|---|---|
-| POST | `/api/analyze` | `{ url }` → `{ videos: [...] }` (rate limited) |
-| POST | `/api/download` | `{ url, format?, quality?, title?, id?, downloadPath?, createSubfolder?, playlistTitle? }` |
-| GET | `/api/status` | Queue snapshot + all download records + `hosted` flag |
+| GET | `/api/status` | Queue snapshot + all download records + `hosted` flag — answered everywhere, used to pick the UI |
+| POST | `/api/analyze` | Desktop only: `{ url }` → `{ videos: [...] }` (rate limited). **410 when hosted** |
+| POST | `/api/download` | Desktop only: `{ url, format?, quality?, title?, id?, downloadPath?, createSubfolder?, playlistTitle? }`. **410 when hosted** |
 | GET | `/api/status/:id` | Single download record |
 | POST | `/api/cancel/:id` | Kill active or remove queued |
 | POST | `/api/cancel-all` | Stop everything |
-| GET | `/api/files/:id` | Hosted mode only — stream a finished file |
-| GET | `/api/pick-directory` | Local mode only — native picker |
-| POST | `/api/open-folder` | Local mode only — arg-array based, no shell |
+| GET | `/api/pick-directory` | Desktop only — native picker |
+| POST | `/api/open-folder` | Desktop only — arg-array based, no shell |
+| GET | `/api/desktop/info` | Desktop only — data dir, auth, yt-dlp and app update state |
+| POST | `/api/settings/cookies-from-browser`, `/api/cookies`, `/api/ytdlp/check`, `/api/ytdlp/update`, `/api/app/check` | Desktop only |
 
 ## WebSocket events (server → client)
 
@@ -154,6 +165,8 @@ If you see "Sign in to confirm you're not a bot":
 **Client (`.env`):**
 ```env
 VITE_API_URL=http://localhost:3000   # empty = same-origin/proxy
+VITE_GITHUB_REPO=yourname/yourrepo   # portal: where the builds live
+VITE_APP_VERSION=1.2.2               # usually injected from the root package.json
 ```
 
 **Server:**
@@ -161,20 +174,22 @@ VITE_API_URL=http://localhost:3000   # empty = same-origin/proxy
 PORT=3000
 CLIENT_URL=http://localhost:5173     # comma-separated origins
 NODE_ENV=development
-DOWNLOADS_DIR=/data/downloads        # hosted-mode storage root
+DOWNLOADS_DIR=/data/downloads        # default destination when no path is given
 YTDLP_PATH=/usr/local/bin/yt-dlp     # optional explicit binary path
-YOUTUBE_COOKIES_B64=...              # optional cookies
+YOUTUBE_COOKIES_B64=...              # optional cookies (ignored in hosted mode)
+APP_REPO=abrhamkindie/yt-playlist-downloader   # release checks + portal fallback link
+DESKTOP_RELEASES_URL=https://github.com/…      # where the 410 response points
 ```
 
 ## Deployment (Render)
 
-`render.yaml` builds the client, installs server deps, and pip-installs yt-dlp. Note the free tier has an **ephemeral disk** — downloaded files disappear on redeploy/restart. For persistence, mount a disk and point `DOWNLOADS_DIR` at it.
+The hosted service only builds and serves the portal: `render.yaml` installs server deps, runs `npm run build` in `client/`, and starts `node server.js`. It deliberately does **not** install yt-dlp — no video is ever fetched there.
 
 ## Security notes
 
-- `/api/open-folder` and `/api/pick-directory` are **disabled in hosted mode** and use argument-array `execFile` (never shell string interpolation).
-- In hosted mode, client-supplied `downloadPath` is ignored; downloads are confined to `DOWNLOADS_ROOT` and `/api/files/:id` refuses paths outside it.
-- Rate limiting on `/api/analyze` (10/min) and `/api/download` (30/min); JSON body limited to 100kb; helmet enabled.
+- On a hosted deployment the public API surface is `GET /api/status`; `/api/analyze` and `/api/download` return 410 and the local helpers (`/api/pick-directory`, `/api/open-folder`, cookies, updaters) are not registered at all. There is no route that streams server files to a browser.
+- Desktop helpers use argument-array `execFile` (never shell string interpolation), and client-supplied download paths must be absolute, existing directories.
+- Rate limiting on `/api/analyze` (10/min) and `/api/download` (30/min); JSON body limited to 100kb (2mb for `/api/cookies`); helmet enabled.
 - Keep `cookies.txt` out of git — it contains your YouTube session credential.
 
 ## Troubleshooting

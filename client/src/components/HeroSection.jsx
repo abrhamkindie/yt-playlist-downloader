@@ -11,7 +11,6 @@ export default function HeroSection({
   onPickDirectory,
   createSubfolder,
   setCreateSubfolder,
-  hostedMode,
 }) {
   return (
     <section className="relative mb-10 overflow-hidden rounded-[32px] border border-line bg-surface px-5 py-10 shadow-panel sm:px-10 sm:py-14">
@@ -40,7 +39,7 @@ export default function HeroSection({
           <span className="relative inline-block text-brand-600">
             straight to your library
             <svg
-              className="absolute -bottom-1.5 left-0 w-full text-accent-500"
+              className="absolute -bottom-2 left-0 h-2 w-full text-accent-500"
               viewBox="0 0 200 12"
               fill="none"
               preserveAspectRatio="none"
@@ -52,9 +51,7 @@ export default function HeroSection({
         </h1>
 
         <p className="mt-4 text-sm leading-relaxed text-ink-secondary sm:text-base">
-          {hostedMode
-            ? 'Paste a playlist link — finished files can be saved straight to your device.'
-            : 'Paste a playlist link to fetch the video list, then pick exactly what to download.'}
+          Paste a playlist link to fetch the video list, then pick exactly what to download.
         </p>
 
         {/* Search pill */}
@@ -93,45 +90,44 @@ export default function HeroSection({
           </button>
         </div>
 
-        {!hostedMode && (
-          <div className="mt-4 grid grid-cols-1 gap-3 text-left md:grid-cols-2">
-            <div className="relative">
-              <FolderOpen
-                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
-                strokeWidth={2}
-              />
-              <input
-                type="text"
-                value={downloadPath}
-                onChange={(e) => setDownloadPath(e.target.value)}
-                aria-label="Download path"
-                className="ring-focus w-full rounded-full border border-line bg-surface py-3 pl-11 pr-24 text-sm font-medium text-ink shadow-soft transition-shadow placeholder:text-ink-muted"
-                placeholder="Download folder (optional)"
-              />
-              <button
-                onClick={onPickDirectory}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-surface-muted px-4 py-1.5 text-xs font-bold text-ink-secondary transition-colors hover:bg-line"
-              >
-                Browse…
-              </button>
-            </div>
-
-            <label className="flex cursor-pointer select-none items-center justify-between gap-3 rounded-full border border-line bg-surface px-5 py-3 shadow-soft">
-              <span className="text-sm font-semibold text-ink-secondary">Subfolder per playlist</span>
-              <div className="relative">
-                <input
-                  type="checkbox"
-                  role="switch"
-                  checked={createSubfolder}
-                  onChange={(e) => setCreateSubfolder(e.target.checked)}
-                  className="peer sr-only"
-                />
-                <div className="h-6 w-11 rounded-full bg-line-strong transition-colors peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500/35" />
-                <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
-              </div>
-            </label>
+        {/* Where the files should land — only meaningful on the user's machine */}
+        <div className="mt-4 grid grid-cols-1 gap-3 text-left md:grid-cols-2">
+          <div className="relative">
+            <FolderOpen
+              className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-muted"
+              strokeWidth={2}
+            />
+            <input
+              type="text"
+              value={downloadPath}
+              onChange={(e) => setDownloadPath(e.target.value)}
+              aria-label="Download path"
+              className="ring-focus w-full rounded-full border border-line bg-surface py-3 pl-11 pr-24 text-sm font-medium text-ink shadow-soft transition-shadow placeholder:text-ink-muted"
+              placeholder="Download folder (optional)"
+            />
+            <button
+              onClick={onPickDirectory}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-full bg-surface-muted px-4 py-1.5 text-xs font-bold text-ink-secondary transition-colors hover:bg-line"
+            >
+              Browse…
+            </button>
           </div>
-        )}
+
+          <label className="flex cursor-pointer select-none items-center justify-between gap-3 rounded-full border border-line bg-surface px-5 py-3 shadow-soft">
+            <span className="text-sm font-semibold text-ink-secondary">Subfolder per playlist</span>
+            <div className="relative">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={createSubfolder}
+                onChange={(e) => setCreateSubfolder(e.target.checked)}
+                className="peer sr-only"
+              />
+              <div className="h-6 w-11 rounded-full bg-line-strong transition-colors peer-checked:bg-brand-600 peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500/35" />
+              <div className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+            </div>
+          </label>
+        </div>
 
         {/* Trust chips */}
         <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5">

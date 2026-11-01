@@ -23,6 +23,14 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  /**
+   * Answered by every build and used once at boot to decide which app to
+   * render: the desktop downloader (hosted: false) or the website's download
+   * portal (hosted: true).
+   */
+  status: () => request('/api/status'),
+
+  // --- Desktop app only. The hosted server refuses these by design. ---
   analyze: (url, signal) =>
     request('/api/analyze', { method: 'POST', body: JSON.stringify({ url }), signal }),
 
@@ -32,14 +40,12 @@ export const api = {
 
   cancelAll: () => request('/api/cancel-all', { method: 'POST' }),
 
-  status: () => request('/api/status'),
-
   pickDirectory: () => request('/api/pick-directory'),
 
   openFolder: (filePath) =>
     request('/api/open-folder', { method: 'POST', body: JSON.stringify({ filePath }) }),
 
-  // --- Desktop-only (absent / rejected on a hosted server) ---
+  // --- Desktop app maintenance / settings (absent on a hosted server) ---
   desktopInfo: () => request('/api/desktop/info'),
 
   setCookiesFromBrowser: (browser) =>
@@ -58,9 +64,6 @@ export const api = {
   updateYtdlp: () => request('/api/ytdlp/update', { method: 'POST', body: JSON.stringify({ force: true }) }),
 
   checkApp: () => request('/api/app/check', { method: 'POST', body: JSON.stringify({ force: true }) }),
-
-  /** Hosted mode only — direct file URL for "save to device". */
-  fileUrl: (id) => `${API_BASE_URL}/api/files/${encodeURIComponent(id)}`,
 
   baseUrl: API_BASE_URL,
 };

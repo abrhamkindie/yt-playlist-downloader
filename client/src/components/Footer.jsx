@@ -1,5 +1,6 @@
 import React from 'react';
-import { Heart, Download } from 'lucide-react';
+import { Download, Code, Bug, Scale } from 'lucide-react';
+import { REPO_URL, APP_VERSION } from '../lib/releases';
 
 export default function Footer({ hostedMode = false }) {
   const year = new Date().getFullYear();
@@ -23,18 +24,40 @@ export default function Footer({ hostedMode = false }) {
 
         <div className="flex flex-wrap items-center justify-center gap-4">
           {hostedMode && (
-            <a
-              href="#desktop"
-              className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 underline-offset-4 transition-colors hover:text-brand-800 hover:underline"
-            >
-              <Download className="h-3.5 w-3.5" strokeWidth={2.4} />
-              Get the Desktop App
-            </a>
+            <>
+              <a
+                href="#desktop"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-700 underline-offset-4 transition-colors hover:text-brand-800 hover:underline"
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={2.4} />
+                Get the Desktop App
+              </a>
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-ink-secondary underline-offset-4 transition-colors hover:text-ink hover:underline"
+              >
+                <Code className="h-3.5 w-3.5" strokeWidth={2.2} />
+                Source code
+              </a>
+              <a
+                href={`${REPO_URL}/issues`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-ink-secondary underline-offset-4 transition-colors hover:text-ink hover:underline"
+              >
+                <Bug className="h-3.5 w-3.5" strokeWidth={2.2} />
+                Report an issue
+              </a>
+            </>
           )}
+          {/* Facts a visitor can check, instead of a sentiment. */}
           <p className="inline-flex items-center gap-1.5 text-xs text-ink-secondary">
-            Made with
-            <Heart className="h-3.5 w-3.5 fill-accent-500 text-accent-500" strokeWidth={2.4} />
-            for creators.
+            <Scale className="h-3.5 w-3.5 text-brand-600" strokeWidth={2.2} />
+            MIT licensed
+            <span className="text-ink-muted">·</span>
+            <span className="font-semibold">v{APP_VERSION}</span>
           </p>
         </div>
       </div>

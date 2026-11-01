@@ -109,17 +109,26 @@ export default function SettingsPanel({ open, onClose, info, refresh, onNotify }
                                 Desktop settings unavailable
                             </h2>
                             <p className="mt-1 text-sm text-ink-secondary">
-                                This looks like a hosted deployment — cookies and the yt-dlp updater only work
-                                inside the desktop app.
+                                The local server did not answer <code>/api/desktop/info</code>. It may still be
+                                starting up — try again, or close this dialog.
                             </p>
                         </div>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="mt-5 w-full rounded-full bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
-                    >
-                        Close
-                    </button>
+                    <div className="mt-5 flex gap-2.5">
+                        <button
+                            onClick={() => refresh?.()}
+                            className="inline-flex flex-grow items-center justify-center gap-2 rounded-full bg-brand-600 px-4 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700"
+                        >
+                            <RefreshCw className="h-4 w-4" strokeWidth={2.2} />
+                            Try again
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="rounded-full border border-line bg-canvas px-4 py-2.5 text-sm font-bold text-ink-secondary transition-colors hover:bg-surface-muted"
+                        >
+                            Close
+                        </button>
+                    </div>
                 </div>
             </div>
         );
