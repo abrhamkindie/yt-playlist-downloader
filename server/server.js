@@ -379,12 +379,29 @@ if (!IS_HOSTED) {
       if (busy && req.body?.force !== true) {
         throw new HttpError(409, 'Downloads are running — wait or cancel them before updating yt-dlp.');
       }
-      const result = await ytdlpUpdater.updateNow();
+      const result = await ytdlpUpdater.updateNow({ reinstall: req.body?.reinstall === true });
       io.emit('ytdlp-updated', result);
       res.json({ ...result, ytdlp: ytdlpUpdater.getStatus() });
     } catch (error) {
       next(error);
     }
+  });
+
+  // One click refreshes both halves of "is my app current?" — the engine and the
+  // app bundle. Each half fails independently so one broken check can never
+  // hide the other's answer.
+  api.post('/desktop/check', async (_req, res) => {
+    const [engine, application] = await Promise.allSettled([
+      ytdlpUpdater.checkForUpdates({ force: true }),
+      appUpdater.checkForUpdates({ force: true }),
+    ]);
+    const message = (r) => (r.status === 'fulfilled' ? null : r.reason?.message || String(r.reason));
+
+    res.json({
+      ytdlp: engine.status === 'fulfilled' ? engine.value : ytdlpUpdater.getStatus(),
+      app: application.status === 'fulfilled' ? application.value : appUpdater.getStatus(),
+      errors: { ytdlp: message(engine), app: message(application) },
+    });
   });
 
   // App self-update: compare the running build against the newest GitHub

@@ -253,10 +253,30 @@ async function checkForUpdates({ force = false } = {}) {
 }
 
 /**
+ * Decide whether a fetch has to happen. Exported for testing — this is the
+ * single place that used to talk the user out of their own "Reinstall" click.
+ * @returns {boolean}
+ */
+function needsFetch({ reinstall = false, currentVersion = null, latestVersion = null, source = null } = {}) {
+    // An explicit reinstall always downloads, whatever is on disk.
+    if (reinstall) return true;
+    // Nothing running that we can read a version from — self-heal.
+    if (!currentVersion) return true;
+    if (compareVersions(latestVersion, currentVersion) > 0) return true;
+    // Current but not our own managed copy: install it into the writable data
+    // dir so future updates have something to replace.
+    return source !== 'managed';
+}
+
+/**
  * Download the latest standalone binary into the managed dir and activate it.
+ * @param {object} [options]
+ * @param {boolean} [options.reinstall] fetch even when the installed copy is
+ *   already current — this is what the "Reinstall" button promises, and without
+ *   it the click silently returns "already current" on a healthy machine.
  * @returns {Promise<{updated: boolean, version: string, path: string}>}
  */
-async function updateNow() {
+async function updateNow({ reinstall = false } = {}) {
     if (state.updating) throw new Error('An update is already running');
 
     ensureDataDir();
@@ -266,7 +286,14 @@ async function updateNow() {
         const binary = describeBinary();
         const currentVersion = binary.path ? await getVersion(binary.path) : null;
 
-        if (currentVersion && compareVersions(release.version, currentVersion) <= 0 && binary.source === 'managed') {
+        if (
+            !needsFetch({
+                reinstall,
+                currentVersion,
+                latestVersion: release.version,
+                source: binary.source,
+            })
+        ) {
             return { updated: false, version: currentVersion, path: binary.path, reason: 'up-to-date' };
         }
 
@@ -368,6 +395,7 @@ async function autoUpdate({ emit, isBusy } = {}) {
 module.exports = {
     assetForPlatform,
     compareVersions,
+    needsFetch,
     getLatestRelease,
     getVersion,
     getStatus,

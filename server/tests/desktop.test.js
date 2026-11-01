@@ -162,6 +162,66 @@ describe('ytdlpUpdater.compareVersions', () => {
     });
 });
 
+describe('ytdlpUpdater.needsFetch', () => {
+    // Regression: "Reinstall" used to answer "already current" and download
+    // nothing. The button label is a promise, so the flag has to win.
+    test('an explicit reinstall always downloads, even when current and managed', () => {
+        assert.strictEqual(
+            updater.needsFetch({
+                reinstall: true,
+                currentVersion: '2026.10.26',
+                latestVersion: '2026.10.26',
+                source: 'managed',
+            }),
+            true,
+        );
+    });
+
+    test('a current managed copy needs no fetch for a plain update click', () => {
+        assert.strictEqual(
+            updater.needsFetch({
+                reinstall: false,
+                currentVersion: '2026.10.26',
+                latestVersion: '2026.10.26',
+                source: 'managed',
+            }),
+            false,
+        );
+    });
+
+    test('a newer release is always fetched', () => {
+        assert.strictEqual(
+            updater.needsFetch({
+                reinstall: false,
+                currentVersion: '2025.1.15',
+                latestVersion: '2026.10.26',
+                source: 'managed',
+            }),
+            true,
+        );
+    });
+
+    test('an unreadable installed version self-heals', () => {
+        assert.strictEqual(updater.needsFetch({ currentVersion: null, latestVersion: '2026.10.26', source: 'managed' }), true);
+        assert.strictEqual(updater.needsFetch({ currentVersion: '', latestVersion: '2026.10.26', source: 'managed' }), true);
+    });
+
+    test('a current but bundled/system copy is pulled into the managed dir', () => {
+        // Otherwise future updates have nothing writable to replace.
+        for (const source of ['bundled', 'system', 'env', null]) {
+            assert.strictEqual(
+                updater.needsFetch({ reinstall: false, currentVersion: '2026.10.26', latestVersion: '2026.10.26', source }),
+                true,
+                `source ${source} should be migrated`,
+            );
+        }
+    });
+
+    test('no arguments at all means fetch, never a silent no-op', () => {
+        assert.strictEqual(updater.needsFetch(), true);
+    });
+});
+
 describe('ytdlpUpdater asset selection', () => {
     test('picks a standalone binary per platform', () => {
         assert.strictEqual(updater.assetForPlatform('win32', 'x64'), 'yt-dlp.exe');
