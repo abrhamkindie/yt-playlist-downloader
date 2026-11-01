@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
     Download,
     Tag,
@@ -8,77 +8,24 @@ import {
     Apple,
     Laptop,
     ShieldCheck,
-    Zap,
     Cookie,
+    Zap,
     Info,
 } from 'lucide-react';
+import { APP_VERSION, OS_TABS, RELEASES_URL, LATEST_URL, detectOS, getOsTab } from '../lib/releases';
 
-const REPO = import.meta.env.VITE_GITHUB_REPO || 'abrhamkindie/yt-playlist-downloader';
-const VERSION = import.meta.env.VITE_APP_VERSION || '1.2.0';
-
-const RELEASES_URL = `https://github.com/${REPO}/releases`;
-const LATEST_URL = `https://github.com/${REPO}/releases/latest`;
-// Use /releases/latest/download/ so links always point to the newest release,
-// even if the frontend was built with an older VERSION constant.
-const DL = `https://github.com/${REPO}/releases/latest/download`;
-
-const OS_TABS = [
-    {
-        id: 'windows',
-        label: 'Windows',
-        icon: <Monitor className="h-4 w-4" strokeWidth={2.2} />,
-        note: 'Windows 10 / 11 · x64',
-        assets: [
-            {
-                label: 'Installer (.exe)',
-                href: `${DL}/StreamPull-Setup.exe`,
-                primary: true,
-                size: '~130 MB',
-            },
-        ],
-    },
-    {
-        id: 'macos',
-        label: 'macOS',
-        icon: <Apple className="h-4 w-4" strokeWidth={2.2} />,
-        note: 'Apple Silicon (M1–M4)',
-        assets: [
-            {
-                label: 'Disk Image (.dmg)',
-                href: `${DL}/StreamPull-arm64.dmg`,
-                primary: true,
-                size: '~110 MB',
-            },
-        ],
-    },
-    {
-        id: 'linux',
-        label: 'Linux',
-        icon: <Laptop className="h-4 w-4" strokeWidth={2.2} />,
-        note: 'x86_64 · AppImage or .deb',
-        assets: [
-            {
-                label: 'AppImage',
-                href: `${DL}/StreamPull-x86_64.AppImage`,
-                primary: true,
-                size: '~105 MB',
-            },
-            {
-                label: 'Debian (.deb)',
-                href: `${DL}/StreamPull-amd64.deb`,
-                primary: false,
-                size: '~95 MB',
-            },
-        ],
-    },
-];
+const TAB_ICONS = {
+    monitor: <Monitor className="h-4 w-4" strokeWidth={2.2} />,
+    apple: <Apple className="h-4 w-4" strokeWidth={2.2} />,
+    laptop: <Laptop className="h-4 w-4" strokeWidth={2.2} />,
+};
 
 const PERKS = [
     {
         icon: <ShieldCheck className="h-4 w-4" strokeWidth={2.2} />,
         tint: 'bg-success-50 text-success-700',
         title: 'No bot checks',
-        text: 'Runs on your own residential IP — no datacenter blocklists.',
+        text: 'Runs on your own residential IP — no datacenter blocklists, no "confirm you are not a bot".',
     },
     {
         icon: <Cookie className="h-4 w-4" strokeWidth={2.2} />,
@@ -94,14 +41,6 @@ const PERKS = [
     },
 ];
 
-function detectOS() {
-    if (typeof navigator === 'undefined') return 'linux';
-    const ua = navigator.userAgent || '';
-    if (/Windows/i.test(ua)) return 'windows';
-    if (/Mac|iPhone|iPad/i.test(ua)) return 'macos';
-    return 'linux';
-}
-
 const BTN_PRIMARY =
     'inline-flex items-center gap-2 rounded-full bg-brand-600 px-5 py-2.5 text-sm font-bold text-white shadow-brand transition-all hover:-translate-y-0.5 hover:bg-brand-700';
 const BTN_SECONDARY =
@@ -109,19 +48,21 @@ const BTN_SECONDARY =
 const BTN_GHOST =
     'inline-flex items-center gap-2 rounded-full border border-line bg-canvas px-4 py-2.5 text-xs font-bold text-ink-secondary transition-colors hover:bg-surface-muted';
 
+/**
+ * The heart of the hosted download portal: pick a platform, grab the build.
+ * Never rendered inside the desktop app itself (it has nothing to install).
+ */
 export default function DesktopDownloadSection() {
-    const [active, setActive] = useState('linux');
+    // Lazy initializer: the visitor's own platform is pre-selected, but they can
+    // switch tabs freely (detectOS is pure and runs only in the browser).
+    const [active, setActive] = useState(detectOS);
 
-    useEffect(() => {
-        setActive(detectOS());
-    }, []);
-
-    const tab = useMemo(() => OS_TABS.find((t) => t.id === active) || OS_TABS[2], [active]);
+    const tab = getOsTab(active);
 
     return (
         <section
             id="desktop"
-            className="relative mt-16 overflow-hidden rounded-[32px] border border-line bg-surface px-5 py-12 shadow-panel sm:px-10 sm:py-16"
+            className="relative mt-14 overflow-hidden rounded-[32px] border border-line bg-surface px-5 py-12 shadow-panel sm:px-10 sm:py-16"
         >
             {/* Decorative layers */}
             <div className="dot-grid pointer-events-none absolute inset-0 opacity-50" aria-hidden="true" />
@@ -142,13 +83,13 @@ export default function DesktopDownloadSection() {
                 </span>
 
                 <h2 className="font-display mt-5 text-[32px] leading-tight font-extrabold tracking-tight text-ink sm:text-[40px]">
-                    Take StreamPull{' '}
-                    <span className="text-brand-600">with you</span>
+                    Pick your platform,
+                    <br className="hidden sm:block" /> <span className="text-brand-600">start downloading</span>
                 </h2>
 
                 <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-ink-secondary sm:text-base">
-                    The hosted version is a demo. The desktop app runs on your own machine, uses your residential
-                    IP, and unlocks cookies, self-updates, and unlimited downloads.
+                    Free, open source, and built for your own machine: your IP, your cookies, your hard drive —
+                    with no playlist size limits and no server waiting in between.
                 </p>
 
                 {/* OS tabs */}
@@ -163,7 +104,7 @@ export default function DesktopDownloadSection() {
                                 : 'text-ink-secondary hover:text-ink'
                                 }`}
                         >
-                            {t.icon}
+                            {TAB_ICONS[t.iconKey]}
                             <span className="hidden sm:inline">{t.label}</span>
                         </button>
                     ))}
@@ -174,7 +115,7 @@ export default function DesktopDownloadSection() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-50 text-brand-700">
-                                {tab.icon}
+                                {TAB_ICONS[tab.iconKey]}
                             </span>
                             <div>
                                 <h3 className="font-display text-base font-extrabold text-ink">
@@ -184,7 +125,7 @@ export default function DesktopDownloadSection() {
                             </div>
                         </div>
                         <span className="inline-flex items-center gap-1.5 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-bold text-brand-700">
-                            v{VERSION}
+                            v{APP_VERSION}
                         </span>
                     </div>
 
@@ -230,7 +171,7 @@ export default function DesktopDownloadSection() {
                     {PERKS.map((p) => (
                         <div
                             key={p.title}
-                            className="rounded-2xl border border-line bg-surface p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-card-hover"
+                            className="rounded-2xl border border-line bg-canvas p-5 shadow-soft transition-all hover:-translate-y-0.5 hover:shadow-card-hover"
                         >
                             <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${p.tint}`}>
                                 {p.icon}

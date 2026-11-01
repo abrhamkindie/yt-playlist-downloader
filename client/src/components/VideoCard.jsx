@@ -1,6 +1,5 @@
 import React from 'react';
-import { Download, FolderOpen, RefreshCw, OctagonX, Play, HardDriveDownload } from 'lucide-react';
-import { api } from '../lib/api';
+import { Download, FolderOpen, RefreshCw, OctagonX, Play } from 'lucide-react';
 
 function formatDuration(seconds) {
   if (!seconds && seconds !== 0) return null;
@@ -41,7 +40,6 @@ export default function VideoCard({
   onDownload,
   onCancel,
   onOpenFolder,
-  hostedMode,
 }) {
   const status = state?.status || 'ready';
   const isDownloading = status === 'downloading';
@@ -133,12 +131,7 @@ export default function VideoCard({
           )}
 
           <div className="flex flex-wrap gap-2">
-            {isComplete && hostedMode ? (
-              <a href={api.fileUrl(video.id)} download className={BTN_PRIMARY}>
-                <HardDriveDownload className="h-4 w-4" strokeWidth={2.2} />
-                Save to device
-              </a>
-            ) : isComplete ? (
+            {isComplete ? (
               <button onClick={() => onOpenFolder(state.filePath)} className={BTN_SECONDARY}>
                 <FolderOpen className="h-4 w-4" strokeWidth={2.2} />
                 Open folder

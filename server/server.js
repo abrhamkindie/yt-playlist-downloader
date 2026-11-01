@@ -18,10 +18,16 @@ const settingsStore = require('./lib/settings');
 const ytdlpUpdater = require('./services/ytdlpUpdater');
 const appUpdater = require('./services/appUpdater');
 const {
-  HOSTED_DOWNLOAD_ROOT,
   resolveDownloadDir,
-  validateLocalDownloadPath,
 } = require('./lib/config');
+
+/**
+ * Where visitors of the hosted site are sent when they ask for a download.
+ * The public deployment is a portal for the desktop app, never a downloader.
+ */
+const DESKTOP_RELEASES_URL =
+  process.env.DESKTOP_RELEASES_URL ||
+  `https://github.com/${process.env.APP_REPO || 'abrhamkindie/yt-playlist-downloader'}/releases/latest`;
 
 const app = express();
 const server = http.createServer(app);
@@ -53,6 +59,25 @@ app.use((req, _res, next) => {
 // can be scoped correctly.
 const api = express.Router();
 
+/**
+ * The hosted website cannot download anything for a visitor:
+ *   - yt-dlp has to run somewhere, and that somewhere would be this server,
+ *     which then holds every file the browser asked for;
+ *   - YouTube answers datacenter IPs with "Sign in to confirm you're not a bot";
+ *   - a free instance sleeps long before a playlist finishes.
+ *
+ * So the deployed app is a portal for the desktop build and these endpoints
+ * answer 410 with the release page instead of failing mysteriously later.
+ * Locally (Electron / `npm run app:dev`) the guard is a no-op.
+ */
+function hostedPortalOnly(_req, res, next) {
+  if (!IS_HOSTED) return next();
+  return res.status(410).json({
+    error: 'Downloads run on your own machine — StreamPull is a desktop app.',
+    desktopApp: DESKTOP_RELEASES_URL,
+  });
+}
+
 // Basic abuse protection on the API surface
 api.use(
   '/analyze',
@@ -66,7 +91,7 @@ api.use(
 // ---------------------------------------------------------------
 // Analyze
 // ---------------------------------------------------------------
-api.post('/analyze', async (req, res, next) => {
+api.post('/analyze', hostedPortalOnly, async (req, res, next) => {
   try {
     const { url } = req.body || {};
     // Friendly 400 before yt-dlp is ever spawned (non-URLs, non-YouTube links).
@@ -89,7 +114,7 @@ api.post('/analyze', async (req, res, next) => {
 // ---------------------------------------------------------------
 // Download
 // ---------------------------------------------------------------
-api.post('/download', async (req, res, next) => {
+api.post('/download', hostedPortalOnly, async (req, res, next) => {
   try {
     let { url, format, quality, title, id, downloadPath, createSubfolder, playlistTitle } = req.body || {};
 
@@ -196,26 +221,10 @@ api.post('/cancel-all', (_req, res) => {
 });
 
 // ---------------------------------------------------------------
-// Hosted mode: stream finished files back to the browser
+// Hosted mode stops here: `/api/status` plus the static portal are the whole
+// public surface. There is deliberately no /api/files route — the server never
+// holds anyone's video, because it never starts a download (hostedPortalOnly).
 // ---------------------------------------------------------------
-if (IS_HOSTED) {
-  const { getResult } = downloadManager;
-  api.get('/files/:id', (req, res) => {
-    const record = getResult(req.params.id);
-    if (!record || record.status !== 'complete' || !record.filePath) {
-      return res.status(404).json({ error: 'File not available' });
-    }
-    // Only serve files inside the hosted download root (defense in depth).
-    const resolved = path.resolve(record.filePath);
-    if (!resolved.startsWith(path.resolve(HOSTED_DOWNLOAD_ROOT))) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
-    if (!fs.existsSync(resolved)) {
-      return res.status(410,).json({ error: 'File no longer exists on the server' });
-    }
-    res.download(resolved, path.basename(resolved));
-  });
-}
 
 // ---------------------------------------------------------------
 // Local (Electron/desktop) helpers: directory pick + open folder.
@@ -463,33 +472,34 @@ process.on('unhandledRejection', (reason) => {
   console.error('Unhandled Rejection:', reason);
 });
 
-// Cookies: write from env if provided (never commit the file itself).
-// Hosted deployments use env vars; desktop users get a writable per-user
-// cookies.txt / browser cookie source via the settings UI instead.
+// Cookies only matter where videos are actually fetched — on the user's own
+// machine. The hosted deployment is a download portal and never authenticates.
 const { COOKIES_PATH } = require('./lib/config');
-if (process.env.YOUTUBE_COOKIES_B64 || process.env.YOUTUBE_COOKIES) {
-  try {
-    const content = process.env.YOUTUBE_COOKIES_B64
-      ? Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf-8')
-      : process.env.YOUTUBE_COOKIES;
-    fs.writeFileSync(COOKIES_PATH, content);
-    console.log('YouTube cookies loaded from environment');
-  } catch (err) {
-    console.error('Failed to write cookies from env:', err.message);
-  }
-}
-
-const authConfig = settingsStore.resolveCookieConfig();
-if (authConfig.method === 'file') {
-  console.log(`YouTube auth: cookies file ${authConfig.detail}`);
-} else if (authConfig.method === 'browser') {
-  console.log(`YouTube auth: --cookies-from-browser ${authConfig.detail}`);
+if (IS_HOSTED) {
+  console.log(`Hosted portal mode: no downloads on this server. Builds: ${DESKTOP_RELEASES_URL}`);
 } else {
-  console.log(
-    IS_HOSTED
-      ? 'No cookies provided. YouTube bot detection may occur.'
-      : 'No cookies configured. If YouTube complains about bots, enable browser cookies in Settings.',
-  );
+  // Written from env if provided (never commit the file itself). Desktop users
+  // normally go through the settings UI; env vars cover headless setups.
+  if (process.env.YOUTUBE_COOKIES_B64 || process.env.YOUTUBE_COOKIES) {
+    try {
+      const content = process.env.YOUTUBE_COOKIES_B64
+        ? Buffer.from(process.env.YOUTUBE_COOKIES_B64, 'base64').toString('utf-8')
+        : process.env.YOUTUBE_COOKIES;
+      fs.writeFileSync(COOKIES_PATH, content);
+      console.log('YouTube cookies loaded from environment');
+    } catch (err) {
+      console.error('Failed to write cookies from env:', err.message);
+    }
+  }
+
+  const authConfig = settingsStore.resolveCookieConfig();
+  if (authConfig.method === 'file') {
+    console.log(`YouTube auth: cookies file ${authConfig.detail}`);
+  } else if (authConfig.method === 'browser') {
+    console.log(`YouTube auth: --cookies-from-browser ${authConfig.detail}`);
+  } else {
+    console.log('No cookies configured. If YouTube complains about bots, enable browser cookies in Settings.');
+  }
 }
 
 // Start listening and resolve with the bound port (Electron waits on this).
