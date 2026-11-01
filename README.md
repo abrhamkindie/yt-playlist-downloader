@@ -37,8 +37,8 @@ The client decides which of the two to render by asking `GET /api/status`; if th
 ├── client/                     # React 19 + Vite + Tailwind v4
 │   └── src/
 │       ├── components/
-│       │   ├── HostedPortal.jsx           # website: download portal (hero + why-not-browser)
-│       │   ├── DesktopDownloadSection.jsx # website: platform tabs + installer links + steps
+│       │   ├── HostedPortal.jsx           # website: download portal (hero + steps + builds)
+│       │   ├── DesktopDownloadSection.jsx # website: platform tabs + installer links
 │       │   ├── DesktopApp.jsx             # desktop: analyze → select → download
 │       │   ├── Header.jsx / Footer.jsx / HeroSection.jsx
 │       │   ├── VideoList.jsx / VideoCard.jsx / VideoControls.jsx
@@ -49,9 +49,13 @@ The client decides which of the two to render by asking `GET /api/status`; if th
 │       ├── lib/
 │       │   ├── api.js          # fetch wrapper for all endpoints
 │       │   ├── constants.js    # formats/qualities (mirrors server)
-│       │   └── releases.js     # release URLs, per-OS assets, OS detection
+│       │   └── releases.js     # release URLs, per-OS assets, install command, OS detection
 │       ├── App.jsx             # probes /api/status → portal or desktop app
-│       └── main.jsx
+│   └── main.jsx
+│
+├── scripts/
+│   ├── install.sh            # Linux terminal installer (curl | bash)
+│   └── download-ytdlp.js     # fetches the yt-dlp binary for the app bundle
 │
 ├── server/
 │   ├── lib/                    # config, constants, errors, files, ytdlp helpers
@@ -118,6 +122,29 @@ Open **http://localhost:5173** — the Vite dev server proxies `/api` and `/sock
 cd server
 npm run app
 ```
+
+## Get the desktop app
+
+**Install from the terminal (Linux, x86_64):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/abrhamkindie/yt-playlist-downloader/HEAD/scripts/install.sh | bash
+```
+
+The script picks the build that fits the system (apt → `.deb`, dnf/yum/zypper → `.rpm`, otherwise the AppImage, falling back to the tarball) and verifies it against the release's `StreamPull-checksums.txt`. Nothing else needs installing — yt-dlp and ffmpeg ship inside the app. Flags: `--format deb|rpm|appimage|tar`, `--version <tag>`, `--no-verify`, `--dry-run`, `--help`. A pinned copy of the script is published as a release asset too (`.../releases/latest/download/install.sh`).
+
+**Every release ships** (see [Releases](https://github.com/abrhamkindie/yt-playlist-downloader/releases/latest)):
+
+| File | Works on |
+|---|---|
+| `StreamPull-Setup.exe` | Windows 10/11 x64 |
+| `StreamPull-arm64.dmg` | macOS on Apple Silicon |
+| `StreamPull-x86_64.AppImage` | Any x86_64 distro with FUSE |
+| `StreamPull-amd64.deb` | Debian, Ubuntu and derivatives |
+| `StreamPull-x86_64.rpm` | Fedora, RHEL, CentOS, openSUSE |
+| `StreamPull-x64.tar.gz` | Everything else — unpack and run `streampull` |
+
+Build them yourself with `npm run dist:linux` (needs `rpm` installed for the `.rpm` target), `npm run dist:win` or `npm run dist:mac`; tagging a `v*` release runs the whole matrix in CI.
 
 ## Tests & Lint
 

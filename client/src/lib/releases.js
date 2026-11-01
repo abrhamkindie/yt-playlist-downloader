@@ -17,6 +17,14 @@ export const REPO_URL = `https://github.com/${REPO}`;
 const DIRECT_ASSET_URL = `${LATEST_URL}/download`;
 
 /**
+ * Terminal install for Linux. Served from the default branch (`HEAD`) rather
+ * than from a release asset so the command works the moment it is merged — the
+ * script itself always installs from `releases/latest`.
+ */
+export const INSTALL_SCRIPT_URL = `https://raw.githubusercontent.com/${REPO}/HEAD/scripts/install.sh`;
+export const INSTALL_CMD = `curl -fsSL ${INSTALL_SCRIPT_URL} | bash`;
+
+/**
  * iconKey is resolved to a component by the UI (this module stays JSX-free).
  */
 export const OS_TABS = [
@@ -52,7 +60,8 @@ export const OS_TABS = [
         id: 'linux',
         label: 'Linux',
         iconKey: 'laptop',
-        note: 'x86_64 · AppImage or .deb',
+        note: 'x86_64 · AppImage, .deb, .rpm or tarball',
+        installCommand: INSTALL_CMD,
         assets: [
             {
                 label: 'AppImage',
@@ -65,6 +74,19 @@ export const OS_TABS = [
                 href: `${DIRECT_ASSET_URL}/StreamPull-amd64.deb`,
                 primary: false,
                 size: '~132 MB',
+            },
+            {
+                label: 'Fedora/openSUSE (.rpm)',
+                href: `${DIRECT_ASSET_URL}/StreamPull-x86_64.rpm`,
+                primary: false,
+                size: null,
+            },
+            {
+                label: 'Tarball (.tar.gz)',
+                href: `${DIRECT_ASSET_URL}/StreamPull-x64.tar.gz`,
+                primary: false,
+                ghost: true,
+                size: '~166 MB',
             },
         ],
     },

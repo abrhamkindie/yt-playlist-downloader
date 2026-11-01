@@ -155,6 +155,25 @@ describe('buildArgs', () => {
     const args = buildArgs({ url: 'u', format: 'mp4', quality: 'best', filePath: '/t.mp4' });
     assert.strictEqual(args[args.indexOf('-f') + 1], 'bestvideo*+bestaudio/best');
   });
+
+  test('always pins single-video mode, whatever URL it is given', () => {
+    // A watch URL carrying a list= id must not turn one download task into the
+    // whole playlist (yt-dlp's default for such a URL is to expand it).
+    const args = buildArgs({
+      url: 'https://www.youtube.com/watch?v=aaaaaaaaaaa&list=PLbbbbbbbbbbbbbbbb',
+      format: 'mp4',
+      quality: 'best',
+      filePath: '/t.mp4',
+    });
+    assert.ok(args.includes('--no-playlist'));
+    assert.ok(!args.includes('--yes-playlist'));
+  });
+
+  test('retry (fallback) attempt keeps single-video mode', () => {
+    const args = buildArgs({ url: 'u', format: 'mp4', quality: 'best', filePath: '/t.mp4', fallback: true });
+    assert.ok(args.includes('--no-playlist'));
+    assert.strictEqual(args[args.indexOf('-f') + 1], 'b');
+  });
 });
 
 describe('validateLocalDownloadPath', () => {
@@ -203,6 +222,26 @@ describe('extractYtInitialData / collectRelatedVideos', () => {
 
   test('returns null when the marker is missing', () => {
     assert.strictEqual(extractYtInitialData('<html>nope</html>'), null);
+  });
+
+  test('decodes the hex-escaped string form YouTube currently ships', () => {
+    const payload = {
+      items: [
+        { lockupViewModel: { contentId: 'ddddddddddd', metadata: { lockupMetadataViewModel: { title: { content: 'Hex Vid' } } } } },
+      ],
+    };
+    const escaped = JSON.stringify(payload).replace(
+      /[^\w]/g,
+      (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`,
+    );
+    const html = `<script>var ytInitialData = '${escaped}';</script>`;
+
+    const data = extractYtInitialData(html);
+    assert.deepStrictEqual(data, payload);
+
+    const out = [];
+    collectRelatedVideos(data, out);
+    assert.deepStrictEqual(out.map((v) => [v.id, v.title]), [['ddddddddddd', 'Hex Vid']]);
   });
 
   test('collects videoRenderer, lockupViewModel and videoWithContextRenderer entries', () => {

@@ -59,8 +59,11 @@
         "linux": {
             "target": [
                 "AppImage",
-                "deb"
+                "deb",
+                "rpm",
+                "tar.gz"
             ],
+            "artifactName": "${productName}-${arch}.${ext}",
             "category": "Utility",
             "synopsis": "Download YouTube videos and playlists locally",
             "maintainer": "StreamPull"
@@ -70,6 +73,10 @@
         },
         "deb": {
             "artifactName": "${productName}-${arch}.deb",
+            "afterInstall": "build/linux/postinst.sh"
+        },
+        "rpm": {
+            "artifactName": "${productName}-${arch}.rpm",
             "afterInstall": "build/linux/postinst.sh"
         },
         "win": {

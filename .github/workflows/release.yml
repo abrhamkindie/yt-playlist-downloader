@@ -45,6 +45,17 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      # electron-builder builds the .rpm through fpm, which shells out to
+      # rpmbuild — not present on the Ubuntu runner by default. shellcheck keeps
+      # scripts/install.sh from shipping broken.
+      - name: Install Linux packaging tools
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm shellcheck
+          bash -n scripts/install.sh
+          shellcheck -S error scripts/install.sh
+
       - name: Install root dependencies
         run: npm install
 
@@ -80,11 +91,18 @@ jobs:
           find release/${VERSION} -maxdepth 1 -type f \( \
             -name '*.AppImage' -o \
             -name '*.deb' -o \
+            -name '*.rpm' -o \
+            -name '*.tar.gz' -o \
             -name '*.exe' -o \
             -name '*.dmg' -o \
             -name '*.zip' -o \
             -name 'latest*.yml' \
           \) -exec cp {} dist-artifacts/ \;
+          if [ "${{ matrix.platform }}" = "linux" ]; then
+            # The terminal installer is served straight from the release so
+            # `curl .../download/install.sh` matches the binaries next to it.
+            cp scripts/install.sh dist-artifacts/install.sh
+          fi
           echo "=== Artifacts ==="
           ls -lh dist-artifacts/
 
@@ -114,6 +132,21 @@ jobs:
       - name: List files
         run: ls -lhR all-artifacts/
 
+      # scripts/install.sh checks this file before installing anything, so it has
+      # to be generated from the final set and published with it.
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd all-artifacts
+          shopt -s nullglob
+          files=( *.AppImage *.deb *.rpm *.tar.gz *.exe *.dmg )
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "no binaries to checksum" >&2
+            exit 1
+          fi
+          sha256sum -- "${files[@]}" > StreamPull-checksums.txt
+          cat StreamPull-checksums.txt
+
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -125,5 +158,9 @@ jobs:
           files: |
             all-artifacts/*.AppImage
             all-artifacts/*.deb
+            all-artifacts/*.rpm
+            all-artifacts/*.tar.gz
             all-artifacts/*.exe
             all-artifacts/*.dmg
+            all-artifacts/install.sh
+            all-artifacts/StreamPull-checksums.txt
