@@ -33,7 +33,7 @@ const BTN_PRIMARY =
 const BTN_SECONDARY =
     'inline-flex items-center gap-2 rounded-full border border-line bg-surface px-4 py-2 text-sm font-bold text-ink-secondary shadow-soft transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-700 disabled:opacity-60 disabled:hover:translate-y-0';
 const BTN_GHOST =
-    'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-50';
+    'inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-bold text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink disabled:opacity-50';
 
 const PILL_SUCCESS =
     'inline-flex items-center gap-1.5 rounded-full border border-success-600/25 bg-success-50 px-3 py-1 text-[11px] font-bold text-success-700';
